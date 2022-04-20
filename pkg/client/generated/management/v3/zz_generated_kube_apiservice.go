@@ -24,7 +24,7 @@ type KubeAPIService struct {
 	AlwaysPullImages        bool                     `json:"alwaysPullImages,omitempty" yaml:"alwaysPullImages,omitempty"`
 	AuditLog                *AuditLog                `json:"auditLog,omitempty" yaml:"auditLog,omitempty"`
 	EventRateLimit          *EventRateLimit          `json:"eventRateLimit,omitempty" yaml:"eventRateLimit,omitempty"`
-	ExtraArgs               map[string]string        `json:"extraArgs,omitempty" yaml:"extraArgs,omitempty"`
+	ExtraArgs               map[string][]string      `json:"extraArgs,omitempty" yaml:"extraArgs,omitempty"`
 	ExtraBinds              []string                 `json:"extraBinds,omitempty" yaml:"extraBinds,omitempty"`
 	ExtraEnv                []string                 `json:"extraEnv,omitempty" yaml:"extraEnv,omitempty"`
 	Image                   string                   `json:"image,omitempty" yaml:"image,omitempty"`
@@ -32,7 +32,7 @@ type KubeAPIService struct {
 	SecretsEncryptionConfig *SecretsEncryptionConfig `json:"secretsEncryptionConfig,omitempty" yaml:"secretsEncryptionConfig,omitempty"`
 	ServiceClusterIPRange   string                   `json:"serviceClusterIpRange,omitempty" yaml:"serviceClusterIpRange,omitempty"`
 	ServiceNodePortRange    string                   `json:"serviceNodePortRange,omitempty" yaml:"serviceNodePortRange,omitempty"`
-	WindowsExtraArgs        map[string]string        `json:"winExtraArgs,omitempty" yaml:"winExtraArgs,omitempty"`
+	WindowsExtraArgs        map[string][]string      `json:"winExtraArgs,omitempty" yaml:"winExtraArgs,omitempty"`
 	WindowsExtraBinds       []string                 `json:"winExtraBinds,omitempty" yaml:"winExtraBinds,omitempty"`
 	WindowsExtraEnv         []string                 `json:"winExtraEnv,omitempty" yaml:"winExtraEnv,omitempty"`
 }

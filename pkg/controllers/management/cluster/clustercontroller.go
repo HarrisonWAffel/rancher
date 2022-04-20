@@ -218,8 +218,8 @@ func (c *controller) RKECapabilities(capabilities v32.Capabilities, rkeConfig rk
 	capabilities.IngressCapabilities = []v32.IngressCapabilities{ingressController}
 	if rkeConfig.Services.KubeAPI.ServiceNodePortRange != "" {
 		capabilities.NodePortRange = rkeConfig.Services.KubeAPI.ServiceNodePortRange
-	} else if rkeConfig.Services.KubeAPI.ExtraArgs["service-node-port-range"] != "" {
-		capabilities.NodePortRange = rkeConfig.Services.KubeAPI.ExtraArgs["service-node-port-range"]
+	} else if rkeConfig.Services.KubeAPI.ExtraArgs["service-node-port-range"][0] != "" {
+		capabilities.NodePortRange = rkeConfig.Services.KubeAPI.ExtraArgs["service-node-port-range"][0]
 	}
 	capabilities.PspEnabled = rkeConfig.Services.KubeAPI.PodSecurityPolicy
 

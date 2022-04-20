@@ -1,6 +1,8 @@
 package requests
 
 import (
+	"bytes"
+	"io/ioutil"
 	"net/http"
 	"strings"
 
@@ -60,6 +62,14 @@ func (h authHeaderHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) 
 		auditUser.Name = userInfo.GetName()
 		auditUser.Group = userInfo.GetGroups()
 	}
+
+	buf, _ := ioutil.ReadAll(req.Body)
+
+	x := string(buf)
+	_ = x
+
+	reader := ioutil.NopCloser(bytes.NewBuffer(buf))
+	req.Body = reader
 
 	h.next.ServeHTTP(rw, req)
 }
