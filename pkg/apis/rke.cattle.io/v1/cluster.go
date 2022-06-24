@@ -62,31 +62,31 @@ type ClusterUpgradeStrategy struct {
 
 type DrainOptions struct {
 	// Enable will require nodes be drained before upgrade
-	Enabled bool `json:"enabled"`
+	Enabled bool `json:"enabled,omitempty"`
 	// Drain node even if there are pods not managed by a ReplicationController, Job, or DaemonSet
 	// Drain will not proceed without Force set to true if there are such pods
-	Force bool `json:"force"`
+	Force bool `json:"force,omitempty"`
 	// If there are DaemonSet-managed pods, drain will not proceed without IgnoreDaemonSets set to true
 	// (even when set to true, kubectl won't delete pods - so setting default to true)
-	IgnoreDaemonSets *bool `json:"ignoreDaemonSets"`
+	IgnoreDaemonSets *bool `json:"ignoreDaemonSets,omitempty"`
 	// IgnoreErrors Ignore errors occurred between drain nodes in group
 	IgnoreErrors bool
 	// Continue even if there are pods using emptyDir
-	DeleteEmptyDirData bool `json:"deleteEmptyDirData"`
+	DeleteEmptyDirData bool `json:"deleteEmptyDirData,omitempty"`
 	// DisableEviction forces drain to use delete rather than evict
-	DisableEviction bool `json:"disableEviction"`
+	DisableEviction bool `json:"disableEviction,omitempty"`
 	//Period of time in seconds given to each pod to terminate gracefully.
 	// If negative, the default value specified in the pod will be used
-	GracePeriod int `json:"gracePeriod"`
+	GracePeriod int `json:"gracePeriod,omitempty"`
 	// Time to wait (in seconds) before giving up for one try
 	Timeout int `json:"timeout"`
 	// SkipWaitForDeleteTimeoutSeconds If pod DeletionTimestamp older than N seconds, skip waiting for the pod.  Seconds must be greater than 0 to skip.
-	SkipWaitForDeleteTimeoutSeconds int `json:"skipWaitForDeleteTimeoutSeconds"`
+	SkipWaitForDeleteTimeoutSeconds int `json:"skipWaitForDeleteTimeoutSeconds,omitempty"`
 
 	// PreDrainHooks A list of hooks to run prior to draining a node
-	PreDrainHooks []DrainHook `json:"preDrainHooks"`
+	PreDrainHooks []DrainHook `json:"preDrainHooks,omitempty"`
 	// PostDrainHook A list of hooks to run after draining AND UPDATING a node
-	PostDrainHooks []DrainHook `json:"postDrainHooks"`
+	PostDrainHooks []DrainHook `json:"postDrainHooks,omitempty"`
 }
 
 type DrainHook struct {
