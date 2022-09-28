@@ -400,6 +400,7 @@ type GKEStatus struct {
 
 type ClusterSecrets struct {
 	PrivateRegistrySecret string `json:"privateRegistrySecret,omitempty" norman:"nocreate,noupdate"`
+	PrivateRegistryURL    string `json:"privateRegistryURL,omitempty" norman:"nocreate,noupdate"`
 	S3CredentialSecret    string `json:"s3CredentialSecret,omitempty" norman:"nocreate,noupdate"`
 	WeavePasswordSecret   string `json:"weavePasswordSecret,omitempty" norman:"nocreate,noupdate"`
 	VsphereSecret         string `json:"vsphereSecret,omitempty" norman:"nocreate,noupdate"`
