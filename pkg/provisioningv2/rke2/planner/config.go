@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/rancher/rancher/pkg/provisioningv2/image"
 	"sort"
 	"strconv"
 	"strings"
@@ -19,7 +20,6 @@ import (
 	"github.com/rancher/rancher/pkg/apis/rke.cattle.io/v1/plan"
 	"github.com/rancher/rancher/pkg/controllers/provisioningv2/rke2"
 	"github.com/rancher/rancher/pkg/nodeconfig"
-	"github.com/rancher/rancher/pkg/settings"
 	"github.com/rancher/wrangler/pkg/data"
 	"github.com/rancher/wrangler/pkg/data/convert"
 	corecontrollers "github.com/rancher/wrangler/pkg/generated/controllers/core/v1"
@@ -113,13 +113,8 @@ func addRoleConfig(config map[string]interface{}, controlPlane *rkev1.RKEControl
 		config["disable-etcd"] = true
 	}
 
-	if sdr := settings.SystemDefaultRegistry.Get(); sdr != "" && !isOnlyWorker(entry) {
-		// only pass the global system-default-registry if we have not defined a different registry under the cluster configuration within the UI.
-		// registries.yaml should take precedence over the global default registry.
-		clusterRegistries := controlPlane.Spec.RKEClusterSpecCommon.Registries
-		if clusterRegistries == nil || (clusterRegistries != nil && len(clusterRegistries.Configs) == 0) {
-			config["system-default-registry"] = sdr
-		}
+	if !isOnlyWorker(entry) {
+		config["system-default-registry"] = image.GetPrivateRepoURLFromControlPlane(controlPlane)
 	}
 
 	// If this is a control-plane node, then we need to set arguments/(and for RKE2, volume mounts) to allow probes
