@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"net"
 	"net/http"
 	_ "net/http/pprof"
 	"net/url"
@@ -41,7 +42,8 @@ var (
 )
 
 const (
-	Token = "X-API-Tunnel-Token"
+	Token                        = "X-API-Tunnel-Token"
+	RegenerateKubeletCertificate = "Regenerate-Kubelet-Certificate"
 )
 
 func main() {
@@ -204,8 +206,24 @@ func run(ctx context.Context) error {
 	}
 
 	headers := map[string][]string{
-		Token:                      {token},
-		rkenodeconfigclient.Params: {base64.StdEncoding.EncodeToString(bytes)},
+		Token:                        {token},
+		rkenodeconfigclient.Params:   {base64.StdEncoding.EncodeToString(bytes)},
+		RegenerateKubeletCertificate: {"false"},
+	}
+
+	// KubeletNeedsNewCertificate will return true if
+	// a) the kubelet serving certificate does not exist
+	// b) the certificate will expire in 72 hours
+	// c) the certificate does not accurately represent the
+	//    current IP address and Hostname of the node
+	//
+	// While the agent may denote it needs a new kubelet certificate
+	// in its connection request, a new certificate will only be
+	// delivered by Rancher if the generate_serving_certificate property
+	// is set to 'true' for the clusters kubelet service.
+	err = KubeletNeedsNewCertificate(headers)
+	if err != nil {
+		return err
 	}
 
 	serverURL, err := url.Parse(server)
@@ -365,6 +383,13 @@ func run(ctx context.Context) error {
 		if !isConnect() {
 			wsURL += "/register"
 		}
+
+		// check if we need a new kubelet cert on reconnection
+		err = KubeletNeedsNewCertificate(headers)
+		if err != nil {
+			return err
+		}
+
 		logrus.Infof("Connecting to %s with token starting with %s", wsURL, token[:len(token)/2])
 		logrus.Tracef("Connecting to %s with token %s", wsURL, token)
 		remotedialer.ClientConnect(ctx, wsURL, headers, nil, func(proto, address string) bool {
@@ -484,4 +509,76 @@ func reconcileKubelet(ctx context.Context) (bool, error) {
 		}
 	}
 	return false, nil
+}
+
+// getIPAddress gets the machines primary outbound IP address by making a UDP
+// request to a random (non-existent) host and taking the local address
+// used to make the request.
+func getIPAddress() string {
+	conn, err := net.Dial("udp", "1.3.3.7:1")
+	if err != nil {
+		return ""
+	}
+	defer conn.Close()
+	return conn.LocalAddr().(*net.UDPAddr).IP.String()
+}
+
+func KubeletNeedsNewCertificate(headers map[string][]string) error {
+
+	ipAddress := getIPAddress()
+	fileSafeIpAddress := strings.ReplaceAll(ipAddress, ".", "-")
+	certFileLocation := fmt.Sprintf("/etc/kubernetes/ssl/kube-kubelet-%s.pem", fileSafeIpAddress)
+	certKeyFileLocation := fmt.Sprintf("/etc/kubernetes/ssl/kube-kubelet-%s-key.pem", fileSafeIpAddress)
+
+	cert, err := tls.LoadX509KeyPair(certFileLocation, certKeyFileLocation)
+	if err != nil && !strings.Contains(err.Error(), "no such file") {
+		return err
+	}
+
+	if len(cert.Certificate) == 0 {
+		headers[RegenerateKubeletCertificate][0] = "true"
+		return nil
+	}
+
+	parsedCert, err := x509.ParseCertificate(cert.Certificate[0])
+	if err != nil {
+		return err
+	}
+
+	// regenerate kubelet cert if the
+	// existing cert is going to expire within 3 days
+	certIsExpiring := false
+	if parsedCert.NotAfter.Sub(time.Now()) < time.Hour*72 {
+		certIsExpiring = true
+	}
+
+	currentHostname, err := os.Hostname()
+	if err != nil {
+		return err
+	}
+
+	// ensure that the current certificate
+	// contains the current hostname
+	hostnameIncludedInSAN := false
+	for _, name := range parsedCert.DNSNames {
+		if name == currentHostname {
+			hostnameIncludedInSAN = true
+		}
+	}
+
+	ipAddressHasChanged := true
+	for _, ip := range parsedCert.IPAddresses {
+		if ipAddress == ip.String() {
+			ipAddressHasChanged = false
+			break
+		}
+	}
+
+	if !hostnameIncludedInSAN || certIsExpiring || ipAddressHasChanged {
+		headers[RegenerateKubeletCertificate][0] = "true"
+	} else {
+		headers[RegenerateKubeletCertificate][0] = "false"
+	}
+
+	return nil
 }
