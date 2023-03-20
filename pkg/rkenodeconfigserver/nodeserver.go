@@ -45,6 +45,11 @@ const (
 	// provided if the kubelet service field `generate_serving_certificate`
 	// is set to 'true'.
 	RegenerateKubeletCertificate = "Regenerate-Kubelet-Certificate"
+
+	// KubeletCertificateIPAddress defines the IP address used to generate the
+	// kubelet serving certificate. This header disambiguates the various IP addresses
+	// attached to a node and the one used by RKE when creating certificates.
+	KubeletCertificateIPAddress = "Kubelet-Certificate-IP-Address"
 )
 
 type RKENodeConfigServer struct {
@@ -112,7 +117,9 @@ func (n *RKENodeConfigServer) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 		return
 	}
 
+	var kubeletCertificateIPAddress string
 	var nodeConfig *rkeworker.NodeConfig
+
 	if IsNonWorker(client.Node.Status.NodeConfig.Role) {
 		nodeConfig, err = n.nonWorkerConfig(req.Context(), client.Cluster, client.Node)
 	} else {
@@ -134,8 +141,7 @@ func (n *RKENodeConfigServer) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 				}
 			}
 		}
-
-		nodeConfig, err = n.nodeConfig(req.Context(), client.Cluster, client.Node, req.Header.Get(strings.ToLower(RegenerateKubeletCertificate)) == "true")
+		kubeletCertificateIPAddress, nodeConfig, err = n.nodeConfig(req.Context(), client.Cluster, client.Node, req.Header.Get(strings.ToLower(RegenerateKubeletCertificate)) == "true")
 	}
 
 	if err != nil {
@@ -145,6 +151,7 @@ func (n *RKENodeConfigServer) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 	}
 
 	rw.Header().Set("Content-Type", "application/json")
+	rw.Header().Set(KubeletCertificateIPAddress, kubeletCertificateIPAddress)
 
 	if err := json.NewEncoder(rw).Encode(nodeConfig); err != nil {
 		logrus.Errorf("failed to write nodeConfig to agent: %v", err)
@@ -181,7 +188,7 @@ func (n *RKENodeConfigServer) nonWorkerConfig(ctx context.Context, cluster *v3.C
 	return nc, nil
 }
 
-func (n *RKENodeConfigServer) nodeConfig(ctx context.Context, cluster *v3.Cluster, node *v3.Node, agentNeedsNewKubeletCertificate bool) (*rkeworker.NodeConfig, error) {
+func (n *RKENodeConfigServer) nodeConfig(ctx context.Context, cluster *v3.Cluster, node *v3.Node, agentNeedsNewKubeletCertificate bool) (string, *rkeworker.NodeConfig, error) {
 	status := cluster.Status.AppliedSpec.DeepCopy()
 	rkeConfig := status.RancherKubernetesEngineConfig
 
@@ -195,17 +202,17 @@ func (n *RKENodeConfigServer) nodeConfig(ctx context.Context, cluster *v3.Cluste
 	if nodePlan == nil {
 		logrus.Tracef("cluster [%s]: node [%s] %s doesn't have node plan yet", cluster.Name, node.Name, hostAddress)
 		nc.AgentCheckInterval = AgentCheckIntervalDuringCreate
-		return nc, nil
+		return "", nc, nil
 	}
 
 	infos, err := librke.GetDockerInfo(node)
 	if err != nil {
-		return nil, err
+		return "", nil, err
 	}
 
 	bundle, err := n.lookup.Lookup(cluster)
 	if err != nil {
-		return nil, err
+		return "", nil, err
 	}
 
 	hostDockerInfo := infos[hostAddress]
@@ -217,14 +224,15 @@ func (n *RKENodeConfigServer) nodeConfig(ctx context.Context, cluster *v3.Cluste
 
 	if rkepki.IsKubeletGenerateServingCertificateEnabledinConfig(rkeConfig) && agentNeedsNewKubeletCertificate {
 		logrus.Debugf("nodeConfig: node agent has requested new kubelet certificate and VerifyKubeletCAEnabled is true, generating kubelet certificate for [%s]", hostAddress)
-		err := GenerateKubeletServingCertForNode(bundle.Certs(), node)
+		err = GenerateKubeletServingCertForNode(bundle.Certs(), node)
 		if err != nil {
-			return nil, errors.Wrapf(err, "failed to generate kubelet certificate")
+			return "", nil, errors.Wrapf(err, "failed to generate kubelet certificate")
 		}
 	}
+
 	certString, err := bundle.SafeMarshal()
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to marshal certificates bundle")
+		return "", nil, errors.Wrapf(err, "failed to marshal certificates bundle")
 	}
 	nc.Certs = certString
 	np := nodePlan.Plan
@@ -250,7 +258,21 @@ func (n *RKENodeConfigServer) nodeConfig(ctx context.Context, cluster *v3.Cluste
 			}
 		}
 	}
-	return nc, nil
+	return getIpAddressUsedByRKECerts(node), nc, nil
+}
+
+func getIpAddressUsedByRKECerts(node *v3.Node) string {
+	nodeAsHost := &hosts.Host{RKEConfigNode: *node.Status.NodeConfig}
+	ipAddress := ""
+	// determine what IP address RKE is using to generate the kubelet_serving_certificate
+	// in the same manner as rkepki.GetCrtNameForHost, but omit the string
+	// formatting done for the actual file name.
+	if len(nodeAsHost.InternalAddress) != 0 && nodeAsHost.InternalAddress != nodeAsHost.Address {
+		ipAddress = nodeAsHost.InternalAddress
+	} else {
+		ipAddress = nodeAsHost.Address
+	}
+	return ipAddress
 }
 
 func GenerateKubeletServingCertForNode(certs map[string]rkepki.CertificatePKI, node *v3.Node) error {
@@ -259,10 +281,9 @@ func GenerateKubeletServingCertForNode(certs map[string]rkepki.CertificatePKI, n
 	if caCrt == nil || caKey == nil {
 		return fmt.Errorf("CA Certificate or Key is empty")
 	}
-
 	nodeAsHost := &hosts.Host{RKEConfigNode: *node.Status.NodeConfig}
-	kubeletName := rkepki.GetCrtNameForHost(nodeAsHost, rkepki.KubeletCertName)
 
+	kubeletName := rkepki.GetCrtNameForHost(nodeAsHost, rkepki.KubeletCertName)
 	altNames := rkepki.GetIPHostAltnamesForHost(nodeAsHost)
 
 	serviceKey := certs[kubeletName].Key

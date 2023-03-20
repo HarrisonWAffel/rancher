@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -32,7 +33,6 @@ import (
 	"github.com/rancher/rancher/pkg/logserver"
 	"github.com/rancher/rancher/pkg/rkenodeconfigclient"
 	"github.com/rancher/rancher/pkg/rkenodeconfigserver"
-	"github.com/rancher/rancher/tests/framework/pkg/killserver"
 	"github.com/rancher/remotedialer"
 	"github.com/rancher/wrangler/pkg/signals"
 	"github.com/sirupsen/logrus"
@@ -43,22 +43,18 @@ var (
 )
 
 const (
-	Token                    = "X-API-Tunnel-Token"
-	KubeletCertValidityLimit = time.Hour * 72
+	Token                                      = "X-API-Tunnel-Token"
+	KubeletCertValidityLimit                   = time.Hour * 72
+	RKEKubeletServingCertIPAddressFileLocation = "/etc/kubernetes"
+	// RKEKubeletServingCertIPAddressFileName contains the IP address used by RKE to generate the
+	// kubelet serving certificate. This information is used by the agent to determine if these
+	// certificates need regeneration.
+	RKEKubeletServingCertIPAddressFileName = "rancher-rke-ip-address.txt"
 )
 
 func main() {
-	ctx, cancel := context.WithCancel(context.Background())
-
-	killServer := killserver.NewKillServer(killserver.KillServerPort, cancel)
-
-	go killServer.Start()
-	go runAgent(ctx)
-	<-ctx.Done()
-}
-
-func runAgent(ctx context.Context) {
 	var err error
+	ctx := context.Background()
 
 	if len(os.Args) > 1 {
 		err = runArgs(ctx)
@@ -196,6 +192,29 @@ func cleanup(ctx context.Context) error {
 	return nil
 }
 
+// The RkeKubeletIpAddress used in code coverage does not
+// need to write files to disk as we do not expect the
+// host running to be rebooted. Instead, we just hold the
+// value locally by reusing the AddressFile field.
+
+type RkeKubeletIPAddress struct {
+	AddressFile string
+	sync.Mutex
+}
+
+func (t *RkeKubeletIPAddress) GetAddress() (string, error) {
+	t.Lock()
+	defer t.Unlock()
+	return t.AddressFile, nil
+}
+
+func (t *RkeKubeletIPAddress) SetAddress(address string) error {
+	t.Lock()
+	defer t.Unlock()
+	t.AddressFile = address
+	return nil
+}
+
 func run(ctx context.Context) error {
 	topContext := signals.SetupSignalContext()
 
@@ -220,9 +239,8 @@ func run(ctx context.Context) error {
 		rkenodeconfigclient.Params: {base64.StdEncoding.EncodeToString(bytes)},
 	}
 
-	err = KubeletNeedsNewCertificate(headers)
-	if err != nil {
-		return err
+	kubeletCertIpAddress := &RkeKubeletIPAddress{
+		AddressFile: fmt.Sprintf("%s/%s", RKEKubeletServingCertIPAddressFileLocation, RKEKubeletServingCertIPAddressFileName),
 	}
 
 	serverURL, err := url.Parse(server)
@@ -327,7 +345,12 @@ func run(ctx context.Context) error {
 	onConnect := func(ctx context.Context, _ *remotedialer.Session) error {
 		connected()
 		connectConfig := fmt.Sprintf("https://%s/v3/connect/config", serverURL.Host)
-		interval, err := rkenodeconfigclient.ConfigClient(ctx, connectConfig, headers, writeCertsOnly)
+		interval, ipAddress, err := rkenodeconfigclient.ConfigClient(ctx, connectConfig, headers, writeCertsOnly)
+		if err != nil {
+			return err
+		}
+
+		err = kubeletCertIpAddress.SetAddress(ipAddress)
 		if err != nil {
 			return err
 		}
@@ -348,19 +371,25 @@ func run(ctx context.Context) error {
 			logrus.Warnf("Unable to perform docker cleanup: %v", err)
 		}
 
-		go func() {
+		go func(rkeKubeletIpAddress *RkeKubeletIPAddress) {
 			logrus.Infof("Starting plan monitor, checking every %v seconds", interval)
 			tt := time.Duration(interval) * time.Second
 			for {
 				select {
 				case <-time.After(tt):
+					ipAddress, err := rkeKubeletIpAddress.GetAddress()
+					if err != nil {
+						logrus.Errorf("failed to read tracked IP Address file: %v", err)
+					}
+
 					// each time we request a plan we should
-					// check if our cert about to expire
-					err = KubeletNeedsNewCertificate(headers)
+					// check if our certs are about to expire
+					err = KubeletNeedsNewCertificate(headers, ipAddress)
 					if err != nil {
 						logrus.Errorf("failed to check validity of kubelet certs: %v", err)
 					}
-					receivedInterval, err := rkenodeconfigclient.ConfigClient(ctx, connectConfig, headers, writeCertsOnly)
+
+					receivedInterval, receivedIPAddress, err := rkenodeconfigclient.ConfigClient(ctx, connectConfig, headers, writeCertsOnly)
 					if err != nil {
 						logrus.Errorf("failed to check plan: %v", err)
 					} else if receivedInterval != 0 && receivedInterval != interval {
@@ -368,11 +397,16 @@ func run(ctx context.Context) error {
 						logrus.Infof("Plan monitor checking %v seconds", receivedInterval)
 					}
 
+					err = rkeKubeletIpAddress.SetAddress(receivedIPAddress)
+					if err != nil {
+						logrus.Errorf("failed to refresh tracked IP address file: %v", err)
+					}
+
 				case <-ctx.Done():
 					return
 				}
 			}
-		}()
+		}(kubeletCertIpAddress)
 
 		return nil
 	}
@@ -389,8 +423,13 @@ func run(ctx context.Context) error {
 			wsURL += "/register"
 		}
 
-		// check if we need a new kubelet cert on reconnection
-		err = KubeletNeedsNewCertificate(headers)
+		// check if we need a new kubelet cert on reconnection.
+		// first connection will always request a new certificate.
+		ipAddress, err := kubeletCertIpAddress.GetAddress()
+		if err != nil {
+			return err
+		}
+		err = KubeletNeedsNewCertificate(headers, ipAddress)
 		if err != nil {
 			return err
 		}
@@ -528,15 +567,10 @@ func reconcileKubelet(ctx context.Context) (bool, error) {
 // in its connection request, a new certificate will only be
 // delivered by Rancher if the generate_serving_certificate property
 // is set to 'true' for the clusters kubelet service.
-func KubeletNeedsNewCertificate(headers http.Header) error {
-	currentHostname := os.Getenv("CATTLE_NODE_NAME")
-
-	// RKE will save the certs on the node using either the public or private IP address, depending on the infrastructure provider.
-	// For example, the certs will be stored using the public IP address for VM's on digital ocean, but will use the private IP
-	// address for VM's on AWS. We do not know which IP address RKE decided to use, so we need to check both locations.
-	kubeletCertFile, kubeletCertKeyFile, ipAddress := findCertificateFiles(os.Getenv("CATTLE_ADDRESS"), os.Getenv("CATTLE_INTERNAL_ADDRESS"))
+func KubeletNeedsNewCertificate(headers http.Header, ipAddress string) error {
+	kubeletCertFile, kubeletCertKeyFile := findCertificateFiles(ipAddress)
 	if kubeletCertFile == "" || kubeletCertKeyFile == "" || ipAddress == "" {
-		logrus.Tracef("did not find kubelet certificate files using either public ip address (%s) or private ip address (%s)", os.Getenv("CATTLE_ADDRESS"), os.Getenv("CATTLE_INTERNAL_ADDRESS"))
+		logrus.Tracef("did not find kubelet certificate files when using the following IP address: %v", ipAddress)
 	}
 
 	cert, err := tls.LoadX509KeyPair(kubeletCertFile, kubeletCertKeyFile)
@@ -544,7 +578,7 @@ func KubeletNeedsNewCertificate(headers http.Header) error {
 		return err
 	}
 
-	needsRegen, err := KubeletCertificateNeedsRegeneration(ipAddress, currentHostname, cert, time.Now())
+	needsRegen, err := KubeletCertificateNeedsRegeneration(ipAddress, os.Getenv("CATTLE_NODE_NAME"), cert, time.Now())
 	if err != nil {
 		return err
 	}
@@ -558,7 +592,7 @@ func KubeletNeedsNewCertificate(headers http.Header) error {
 	return nil
 }
 
-func findCertificateFiles(IPAddresses ...string) (string, string, string) {
+func findCertificateFiles(IPAddresses ...string) (string, string) {
 	for _, ip := range IPAddresses {
 		fileSafeIPAddress := strings.ReplaceAll(ip, ".", "-")
 		certFile := fmt.Sprintf("/etc/kubernetes/ssl/kube-kubelet-%s.pem", fileSafeIPAddress)
@@ -567,10 +601,11 @@ func findCertificateFiles(IPAddresses ...string) (string, string, string) {
 		_, keyErr := os.Stat(certKeyFile)
 		// check that both files exist
 		if certErr == nil && keyErr == nil {
-			return certFile, certKeyFile, ip
+			logrus.Tracef("Found kubelet certificates denoted with IP address: %s", ip)
+			return certFile, certKeyFile
 		}
 	}
-	return "", "", ""
+	return "", ""
 }
 
 func KubeletCertificateNeedsRegeneration(ipAddress, currentHostname string, cert tls.Certificate, currentTime time.Time) (bool, error) {

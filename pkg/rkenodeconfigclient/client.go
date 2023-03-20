@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/rancher/rancher/pkg/agent/node"
-
+	"github.com/rancher/rancher/pkg/rkenodeconfigserver"
 	"github.com/rancher/rancher/pkg/rkeworker"
 	"github.com/sirupsen/logrus"
 )
@@ -50,17 +50,17 @@ func newErrNodeOrClusterNotFound(msg, occursType string) *ErrNodeOrClusterNotFou
 	}
 }
 
-func ConfigClient(ctx context.Context, url string, header http.Header, writeCertOnly bool) (int, error) {
+func ConfigClient(ctx context.Context, url string, header http.Header, writeCertOnly bool) (int, string, error) {
 	// try a few more times because there is a delay after registering a new node
 	nodeOrClusterNotFoundRetryLimit := 3
 	interval := 120
 	for {
-		nc, err := getConfig(client, url, header)
+		nc, receivedIPAddress, err := getConfig(client, url, header)
 		if err != nil {
 			if _, ok := err.(*ErrNodeOrClusterNotFound); ok {
 				if nodeOrClusterNotFoundRetryLimit < 1 {
 					// return the error if the node cannot connect to server or remove from a cluster
-					return interval, err
+					return interval, "", err
 				}
 
 				nodeOrClusterNotFoundRetryLimit--
@@ -80,7 +80,7 @@ func ConfigClient(ctx context.Context, url string, header http.Header, writeCert
 
 			err := rkeworker.ExecutePlan(ctx, nc, writeCertOnly)
 			if err != nil {
-				return interval, err
+				return interval, "", err
 			}
 
 			/* server sends non-zero nodeVersion when node is upgrading (node.Status.AppliedVersion != cluster.Status.NodeVersion)
@@ -92,7 +92,7 @@ func ConfigClient(ctx context.Context, url string, header http.Header, writeCert
 
 				bytes, err := json.Marshal(params)
 				if err != nil {
-					return interval, err
+					return interval, "", err
 				}
 
 				headerCopy := http.Header{}
@@ -105,7 +105,7 @@ func ConfigClient(ctx context.Context, url string, header http.Header, writeCert
 				continue
 			}
 
-			return interval, err
+			return interval, receivedIPAddress, err
 		}
 
 		logrus.Infof("Waiting for node to register. Either cluster is not ready for registering, cluster is currently provisioning, or etcd, controlplane and worker node have to be registered")
@@ -113,10 +113,10 @@ func ConfigClient(ctx context.Context, url string, header http.Header, writeCert
 	}
 }
 
-func getConfig(client *http.Client, url string, header http.Header) (*rkeworker.NodeConfig, error) {
+func getConfig(client *http.Client, url string, header http.Header) (*rkeworker.NodeConfig, string, error) {
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	for k, v := range header {
@@ -125,16 +125,16 @@ func getConfig(client *http.Client, url string, header http.Header) (*rkeworker.
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusServiceUnavailable {
-		return nil, nil
+		return nil, "", nil
 	}
 
 	if resp.StatusCode == http.StatusNotFound {
-		return &rkeworker.NodeConfig{}, nil
+		return &rkeworker.NodeConfig{}, "", nil
 	}
 
 	if resp.StatusCode != http.StatusOK {
@@ -142,14 +142,14 @@ func getConfig(client *http.Client, url string, header http.Header) (*rkeworker.
 		errMsg := fmt.Sprintf("invalid response %d: %s", resp.StatusCode, string(respBytes))
 
 		if nodeNotFoundRegexp.Match(respBytes) {
-			return nil, newErrNodeOrClusterNotFound(errMsg, "node")
+			return nil, "", newErrNodeOrClusterNotFound(errMsg, "node")
 		} else if clusterNotFoundRegexp.Match(respBytes) {
-			return nil, newErrNodeOrClusterNotFound(errMsg, "cluster")
+			return nil, "", newErrNodeOrClusterNotFound(errMsg, "cluster")
 		}
 
-		return nil, errors.New(errMsg)
+		return nil, "", errors.New(errMsg)
 	}
 
 	nc := &rkeworker.NodeConfig{}
-	return nc, json.NewDecoder(resp.Body).Decode(nc)
+	return nc, resp.Header.Get(rkenodeconfigserver.KubeletCertificateIPAddress), json.NewDecoder(resp.Body).Decode(nc)
 }
