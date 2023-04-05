@@ -100,7 +100,7 @@ func Register(ctx context.Context, clients *wrangler.Context) {
 	}, clients.RKE.RKEBootstrap(), clients.Core.ServiceAccount(), clients.CAPI.Machine())
 }
 
-func (h *handler) getBootstrapSecret(namespace, name string, envVars []corev1.EnvVar, machine *capi.Machine) (*corev1.Secret, error) {
+func (h *handler) getBootstrapSecret(namespace, name string, envVars []corev1.EnvVar, machine *capi.Machine, preAgentHooks, postAgentHooks []string) (*corev1.Secret, error) {
 	sa, err := h.serviceAccountCache.Get(namespace, name)
 	if apierrors.IsNotFound(err) {
 		return nil, nil
@@ -124,7 +124,8 @@ func (h *handler) getBootstrapSecret(namespace, name string, envVars []corev1.En
 	if os := machine.GetLabels()[rke2.CattleOSLabel]; os == rke2.WindowsMachineOS {
 		is = installer.WindowsInstallScript
 	}
-	data, err := is(context.WithValue(context.Background(), tls.InternalAPI, hasHostPort), base64.URLEncoding.EncodeToString(hash[:]), envVars, "")
+
+	data, err := is(context.WithValue(context.Background(), tls.InternalAPI, hasHostPort), base64.URLEncoding.EncodeToString(hash[:]), envVars, "", preAgentHooks, postAgentHooks)
 	if err != nil {
 		return nil, err
 	}
@@ -250,7 +251,7 @@ func (h *handler) assignBootStrapSecret(machine *capi.Machine, bootstrap *rkev1.
 		},
 	}
 
-	bootstrapSecret, err := h.getBootstrapSecret(sa.Namespace, sa.Name, envVars, machine)
+	bootstrapSecret, err := h.getBootstrapSecret(sa.Namespace, sa.Name, envVars, machine, bootstrap.Spec.PreAgentHooks, bootstrap.Spec.PostAgentHooks)
 	if err != nil {
 		return nil, nil, err
 	}

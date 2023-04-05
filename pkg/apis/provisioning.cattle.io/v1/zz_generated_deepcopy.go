@@ -288,6 +288,16 @@ func (in *RKEMachinePool) DeepCopyInto(out *RKEMachinePool) {
 		*out = new(string)
 		**out = **in
 	}
+	if in.PreAgentHooks != nil {
+		in, out := &in.PreAgentHooks, &out.PreAgentHooks
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
+	if in.PostAgentHooks != nil {
+		in, out := &in.PostAgentHooks, &out.PostAgentHooks
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
 	return
 }
 

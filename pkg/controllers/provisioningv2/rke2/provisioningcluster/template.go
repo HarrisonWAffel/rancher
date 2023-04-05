@@ -319,6 +319,30 @@ func machineDeployments(cluster *rancherv1.Cluster, capiCluster *capi.Cluster, d
 			machineSpecAnnotations[capi.ExcludeNodeDrainingAnnotation] = "true"
 		}
 
+		poolSpecificBoostrapName := bootstrapName
+		if (machinePool.PreAgentHooks != nil && len(machinePool.PreAgentHooks) > 0) || (machinePool.PostAgentHooks != nil && len(machinePool.PostAgentHooks) > 0) {
+			poolSpecificBoostrapName = name.SafeConcatName(bootstrapName, "pool", machinePool.Name)
+			result = append(result, &rkev1.RKEBootstrapTemplate{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: cluster.Namespace,
+					Name:      poolSpecificBoostrapName,
+					Labels: map[string]string{
+						rke2.ClusterNameLabel: cluster.Name,
+					},
+				},
+				Spec: rkev1.RKEBootstrapTemplateSpec{
+					ClusterName: cluster.Name,
+					Template: rkev1.RKEBootstrap{
+						Spec: rkev1.RKEBootstrapSpec{
+							ClusterName:    cluster.Name,
+							PreAgentHooks:  machinePool.PreAgentHooks,
+							PostAgentHooks: machinePool.PostAgentHooks,
+						},
+					},
+				},
+			})
+		}
+
 		machineDeployment := &capi.MachineDeployment{
 			ObjectMeta: metav1.ObjectMeta{
 				Namespace:   cluster.Namespace,
@@ -353,7 +377,7 @@ func machineDeployments(cluster *rancherv1.Cluster, capiCluster *capi.Cluster, d
 							ConfigRef: &corev1.ObjectReference{
 								Kind:       "RKEBootstrapTemplate",
 								Namespace:  cluster.Namespace,
-								Name:       bootstrapName,
+								Name:       poolSpecificBoostrapName,
 								APIVersion: rke2.RKEAPIVersion,
 							},
 						},

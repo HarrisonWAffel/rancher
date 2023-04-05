@@ -29,6 +29,8 @@ type RKEMachinePool struct {
 	UnhealthyRange               *string                      `json:"unhealthyRange,omitempty"`
 	MachineOS                    string                       `json:"machineOS,omitempty"`
 	DynamicSchemaSpec            string                       `json:"dynamicSchemaSpec,omitempty"`
+	PreAgentHooks                []string                     `json:"preAgentHooks,omitempty"`
+	PostAgentHooks               []string                     `json:"postAgentHooks,omitempty"`
 }
 
 type RKEMachinePoolRollingUpdate struct {

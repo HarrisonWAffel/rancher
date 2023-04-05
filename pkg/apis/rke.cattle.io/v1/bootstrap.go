@@ -15,7 +15,9 @@ type RKEBootstrap struct {
 }
 
 type RKEBootstrapSpec struct {
-	ClusterName string `json:"clusterName,omitempty"`
+	ClusterName    string   `json:"clusterName,omitempty"`
+	PreAgentHooks  []string `json:"preAgentHooks"`
+	PostAgentHooks []string `json:"postAgentHooks"`
 }
 
 type RKEBootstrapStatus struct {
