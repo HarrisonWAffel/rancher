@@ -1,6 +1,6 @@
 FROM registry.suse.com/bci/bci-base:15.5
 
-RUN zypper -n install --no-recommends git-core curl ca-certificates unzip xz gzip sed tar shadow gawk vim-small netcat-openbsd mkisofs openssh-clients && \
+RUN zypper -n install --no-recommends git-core curl ca-certificates unzip xz gzip sed tar shadow gawk vim-small netcat-openbsd mkisofs && \
     zypper -n clean -a && rm -rf /tmp/* /var/tmp/* /usr/share/doc/packages/* && \
     useradd rancher && \
     mkdir -p /var/lib/rancher /var/lib/cattle /opt/jail /opt/drivers/management-state/bin && \
@@ -16,20 +16,20 @@ WORKDIR /var/lib/rancher
 ARG ARCH=amd64
 ARG ETCD_UNSUPPORTED_ARCH
 ARG IMAGE_REPO=rancher
-ARG SYSTEM_CHART_DEFAULT_BRANCH=dev-v2.7
-ARG CHART_DEFAULT_BRANCH=dev-v2.7.11
+ARG SYSTEM_CHART_DEFAULT_BRANCH=dev-v2.8
+ARG CHART_DEFAULT_BRANCH=dev-v2.8
 ARG PARTNER_CHART_DEFAULT_BRANCH=main
 ARG RKE2_CHART_DEFAULT_BRANCH=main
 # kontainer-driver-metadata branch to be set for specific branch other than dev/master, logic at rancher/rancher/pkg/settings/setting.go
-ARG CATTLE_KDM_BRANCH=dev-v2.7
+ARG CATTLE_KDM_BRANCH=dev-v2.8
 
 ENV CATTLE_SYSTEM_CHART_DEFAULT_BRANCH=$SYSTEM_CHART_DEFAULT_BRANCH
 ENV CATTLE_CHART_DEFAULT_BRANCH=$CHART_DEFAULT_BRANCH
 ENV CATTLE_PARTNER_CHART_DEFAULT_BRANCH=$PARTNER_CHART_DEFAULT_BRANCH
 ENV CATTLE_RKE2_CHART_DEFAULT_BRANCH=$RKE2_CHART_DEFAULT_BRANCH
 ENV CATTLE_HELM_VERSION v2.16.8-rancher2
-ENV CATTLE_MACHINE_VERSION v0.15.0-rancher100
-ENV CATTLE_K3S_VERSION v1.27.4+k3s1
+ENV CATTLE_MACHINE_VERSION v0.15.0-rancher103
+ENV CATTLE_K3S_VERSION v1.27.5+k3s1
 ENV CATTLE_MACHINE_PROVISION_IMAGE rancher/machine:${CATTLE_MACHINE_VERSION}
 ENV CATTLE_ETCD_VERSION v3.5.1
 ENV LOGLEVEL_VERSION v0.1.5
@@ -55,11 +55,9 @@ ENV CATTLE_SYSTEM_AGENT_UPGRADE_IMAGE rancher/system-agent:${CATTLE_SYSTEM_AGENT
 ENV CATTLE_SYSTEM_UPGRADE_CONTROLLER_CHART_VERSION 102.1.0+up0.5.0
 
 # System charts minimal version
-ENV CATTLE_FLEET_MIN_VERSION=102.2.0+up0.8.0
-# Deprecated in favor of CATTLE_RANCHER_WEBHOOK_VERSION.
-ENV CATTLE_RANCHER_WEBHOOK_MIN_VERSION=''
-ENV CATTLE_RANCHER_WEBHOOK_VERSION=2.0.6+up0.3.6
-ENV CATTLE_CSP_ADAPTER_MIN_VERSION=2.0.2
+ENV CATTLE_FLEET_MIN_VERSION=103.0.0+up0.8.0
+ENV CATTLE_RANCHER_WEBHOOK_VERSION=103.0.0+up0.4.0-rc5
+ENV CATTLE_CSP_ADAPTER_MIN_VERSION=103.0.0+up3.0.0-rc1
 
 RUN mkdir -p /var/lib/rancher-data/local-catalogs/system-library && \
     mkdir -p /var/lib/rancher-data/local-catalogs/library && \
@@ -118,7 +116,7 @@ RUN curl ${HELM_URL_V3} | tar xvzf - --strip-components=1 -C /usr/bin && \
     chmod +x /usr/bin/kustomize
 
 # Set up K3s: copy the necessary binaries from the K3s image.
-COPY --from=rancher/k3s:v1.27.4-k3s1 \
+COPY --from=rancher/k3s:v1.27.5-k3s1 \
     /bin/blkid \
     /bin/bandwidth \
     /bin/cni \
