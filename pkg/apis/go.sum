@@ -488,6 +488,7 @@ github.com/rancher/lasso v0.0.0-20230830164424-d684fdeb6f29 h1:+kige/h8/LnzWgPjB
 github.com/rancher/lasso v0.0.0-20230830164424-d684fdeb6f29/go.mod h1:kgk9kJVMj9FIrrXU0iyM6u/9Je4bEjPImqswkTVaKsQ=
 github.com/rancher/norman v0.0.0-20230831160711-5de27f66385d h1:Ft/iTH91TlE2oBGmpkdO4I8o8cvUmCnytdwu52a/tN4=
 github.com/rancher/norman v0.0.0-20230831160711-5de27f66385d/go.mod h1:Sm2Xqai+aecgmJ86ygyEe+TdPMLkauEpykSstBAu4Ko=
+github.com/rancher/rke v1.4.12/go.mod h1:zCL+we25sFDQb2jo6EojX8zxBfbB7FxL6Lte6A6eCiY=
 github.com/rancher/rke v1.5.0-rc5 h1:lJMlkT7OmMsV6TkcV+7Xp3v8Hh6v0z8JHovrec+RqCw=
 github.com/rancher/rke v1.5.0-rc5/go.mod h1:sYHjxydLD8yiFna4LMqbxjYvRse1lZI+ltr+fC07S38=
 github.com/rancher/wrangler v1.1.1-0.20230831050635-df1bd5aae9df h1:WJ+aaUICHPX8HeLmHE9JL/RFHhilMfcJlqmhgpc7gJU=
@@ -1127,6 +1128,7 @@ k8s.io/kube-openapi v0.0.0-20230501164219-8b0f38b5fd1f/go.mod h1:byini6yhqGC14c3
 k8s.io/kubectl v0.22.2/go.mod h1:BApg2j0edxLArCOfO0ievI27EeTQqBDMNU9VQH734iQ=
 k8s.io/kubernetes v1.15.0-alpha.0 h1:gIwzzIgt0BX8fznDZRxdZv2837cEmVetI54aUfzkPk8=
 k8s.io/kubernetes v1.15.0-alpha.0/go.mod h1:ocZa8+6APFNC2tX1DZASIbocyYT5jHzqFVsY5aoB7Jk=
+k8s.io/kubernetes v1.25.12/go.mod h1:CjSm5tJyKxHyGhK5aAID68YMErzDhAjWLL7Nd7NMonU=
 k8s.io/metrics v0.22.2/go.mod h1:GUcsBtpsqQD1tKFS/2wCKu4ZBowwRncLOJH1rgWs3uw=
 k8s.io/utils v0.0.0-20210802155522-efc7438f0176/go.mod h1:jPW/WVKK9YHAvNhRxK0md/EJ228hCsBRufyofKtW8HA=
 k8s.io/utils v0.0.0-20210819203725-bdf08cb9a70a/go.mod h1:jPW/WVKK9YHAvNhRxK0md/EJ228hCsBRufyofKtW8HA=
