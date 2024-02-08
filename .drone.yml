@@ -372,6 +372,7 @@ steps:
     - ARCH=amd64
     - VERSION=${DRONE_BRANCH/release\//}-${DRONE_COMMIT}-head
     - RANCHER_TAG=${DRONE_BRANCH/release\//}-${DRONE_COMMIT}-linux-amd64
+    - RANCHER_REPO=stgregistry.suse.com/rancher
     context: package/
     custom_dns: 1.1.1.1
     dockerfile: package/Dockerfile.installer
@@ -398,6 +399,7 @@ steps:
     - ARCH=amd64
     - VERSION=${DRONE_BRANCH/release\//}-${DRONE_COMMIT}-head
     - RANCHER_TAG=${DRONE_BRANCH/release\//}-${DRONE_COMMIT}-linux-amd64
+    - RANCHER_REPO=stgregistry.suse.com/rancher
     context: package/
     custom_dns: 1.1.1.1
     dockerfile: package/Dockerfile.agent
@@ -445,6 +447,7 @@ steps:
     - ARCH=amd64
     - "VERSION=${DRONE_TAG}"
     - "RANCHER_TAG=${DRONE_TAG}-linux-amd64"
+    - RANCHER_REPO=stgregistry.suse.com/rancher
     context: package/
     custom_dns: 1.1.1.1
     dockerfile: package/Dockerfile.installer
@@ -467,6 +470,7 @@ steps:
     - ARCH=amd64
     - "VERSION=${DRONE_TAG}"
     - "RANCHER_TAG=${DRONE_TAG}-linux-amd64"
+    - RANCHER_REPO=stgregistry.suse.com/rancher
     context: package/
     custom_dns: 1.1.1.1
     dockerfile: package/Dockerfile.agent
@@ -636,6 +640,7 @@ steps:
     - ARCH=arm64
     - VERSION=${DRONE_BRANCH/release\//}-${DRONE_COMMIT}-head
     - RANCHER_TAG=${DRONE_BRANCH/release\//}-${DRONE_COMMIT}-linux-arm64
+    - RANCHER_REPO=stgregistry.suse.com/rancher
     context: package/
     custom_dns: 1.1.1.1
     dockerfile: package/Dockerfile.installer
@@ -662,6 +667,7 @@ steps:
     - ARCH=arm64
     - VERSION=${DRONE_BRANCH/release\//}-${DRONE_COMMIT}-head
     - RANCHER_TAG=${DRONE_BRANCH/release\//}-${DRONE_COMMIT}-linux-arm64
+    - RANCHER_REPO=stgregistry.suse.com/rancher
     context: package/
     custom_dns: 1.1.1.1
     dockerfile: package/Dockerfile.agent
@@ -709,6 +715,7 @@ steps:
     - ARCH=arm64
     - "VERSION=${DRONE_TAG}"
     - "RANCHER_TAG=${DRONE_TAG}-linux-arm64"
+    - RANCHER_REPO=stgregistry.suse.com/rancher
     context: package/
     custom_dns: 1.1.1.1
     dockerfile: package/Dockerfile.installer
@@ -733,6 +740,7 @@ steps:
     - ARCH=arm64
     - "VERSION=${DRONE_TAG}"
     - "RANCHER_TAG=${DRONE_TAG}-linux-arm64"
+    - RANCHER_REPO=stgregistry.suse.com/rancher
     context: package/
     custom_dns: 1.1.1.1
     dockerfile: package/Dockerfile.agent
