@@ -341,8 +341,6 @@ steps:
 
 - name: docker-publish-head
   image: plugins/docker
-  environment:
-    DOCKER_REGISTRY: stgregistry.suse.com
   settings:
     purge: false
     build_args:
@@ -354,7 +352,8 @@ steps:
     tag: ${DRONE_BRANCH/release\//}-${DRONE_COMMIT}-linux-amd64
     password:
       from_secret: stage_registry_password
-    repo: rancher/rancher
+    repo: stgregistry.suse.com/rancher/rancher
+    registry: stgregistry.suse.com
     username:
       from_secret: stage_registry_username
   when:
@@ -367,8 +366,6 @@ steps:
 
 - name: docker-publish-head-installer
   image: plugins/docker
-  environment:
-    DOCKER_REGISTRY: stgregistry.suse.com
   settings:
     purge: false
     build_args:
@@ -381,7 +378,8 @@ steps:
     tag: ${DRONE_BRANCH/release\//}-${DRONE_COMMIT}-linux-amd64
     password:
       from_secret: stage_registry_password
-    repo: rancher/system-agent-installer-rancher
+    repo: stgregistry.suse.com/rancher/system-agent-installer-rancher
+    registry: stgregistry.suse.com
     username:
       from_secret: stage_registry_username
   when:
@@ -394,8 +392,6 @@ steps:
 
 - name: docker-publish-head-agent
   image: plugins/docker
-  environment:
-    DOCKER_REGISTRY: stgregistry.suse.com
   settings:
     purge: false
     build_args:
@@ -408,7 +404,8 @@ steps:
     tag: ${DRONE_BRANCH/release\//}-${DRONE_COMMIT}-linux-amd64
     password:
       from_secret: stage_registry_password
-    repo: rancher/rancher-agent
+    repo: stgregistry.suse.com/rancher/rancher-agent
+    registry: stgregistry.suse.com
     username:
       from_secret: stage_registry_username
   when:
@@ -421,8 +418,6 @@ steps:
 
 - name: docker-publish
   image: plugins/docker
-  environment:
-    DOCKER_REGISTRY: stgregistry.suse.com
   settings:
     purge: false
     build_args:
@@ -433,7 +428,8 @@ steps:
     dockerfile: package/Dockerfile
     password:
       from_secret: stage_registry_password
-    repo: rancher/rancher
+    repo: stgregistry.suse.com/rancher/rancher
+    registry: stgregistry.suse.com
     tag: "${DRONE_TAG}-linux-amd64"
     username:
       from_secret: stage_registry_username
@@ -443,8 +439,6 @@ steps:
 
 - name: docker-publish-installer
   image: plugins/docker
-  environment:
-    DOCKER_REGISTRY: stgregistry.suse.com
   settings:
     purge: false
     build_args:
@@ -456,7 +450,8 @@ steps:
     dockerfile: package/Dockerfile.installer
     password:
       from_secret: stage_registry_password
-    repo: rancher/system-agent-installer-rancher
+    repo: stgregistry.suse.com/rancher/system-agent-installer-rancher
+    registry: stgregistry.suse.com
     tag: "${DRONE_TAG}-linux-amd64"
     username:
       from_secret: stage_registry_username
@@ -466,8 +461,6 @@ steps:
 
 - name: docker-publish-agent
   image: plugins/docker
-  environment:
-    DOCKER_REGISTRY: stgregistry.suse.com
   settings:
     purge: false
     build_args:
@@ -479,7 +472,8 @@ steps:
     dockerfile: package/Dockerfile.agent
     password:
       from_secret: stage_registry_password
-    repo: rancher/rancher-agent
+    repo: stgregistry.suse.com/rancher/rancher-agent
+    registry: stgregistry.suse.com
     tag: "${DRONE_TAG}-linux-amd64"
     username:
       from_secret: stage_registry_username
@@ -611,8 +605,6 @@ steps:
 
 - name: docker-publish-head
   image: plugins/docker
-  environment:
-    DOCKER_REGISTRY: stgregistry.suse.com
   settings:
     purge: false
     build_args:
@@ -624,7 +616,8 @@ steps:
     tag: ${DRONE_BRANCH/release\//}-${DRONE_COMMIT}-linux-arm64
     password:
       from_secret: stage_registry_password
-    repo: rancher/rancher
+    repo: stgregistry.suse.com/rancher/rancher
+    registry: stgregistry.suse.com
     username:
       from_secret: stage_registry_username
   when:
@@ -637,8 +630,6 @@ steps:
 
 - name: docker-publish-head-installer
   image: plugins/docker
-  environment:
-    DOCKER_REGISTRY: stgregistry.suse.com
   settings:
     purge: false
     build_args:
@@ -651,7 +642,8 @@ steps:
     tag: ${DRONE_BRANCH/release\//}-${DRONE_COMMIT}-linux-arm64
     password:
       from_secret: stage_registry_password
-    repo: rancher/system-agent-installer-rancher
+    repo: stgregistry.suse.com/rancher/system-agent-installer-rancher
+    registry: stgregistry.suse.com
     username:
       from_secret: stage_registry_username
   when:
@@ -664,8 +656,6 @@ steps:
 
 - name: docker-publish-head-agent
   image: plugins/docker
-  environment:
-    DOCKER_REGISTRY: stgregistry.suse.com
   settings:
     purge: false
     build_args:
@@ -678,7 +668,8 @@ steps:
     tag: ${DRONE_BRANCH/release\//}-${DRONE_COMMIT}-linux-arm64
     password:
       from_secret: stage_registry_password
-    repo: rancher/rancher-agent
+    repo: stgregistry.suse.com/rancher/rancher-agent
+    registry: stgregistry.suse.com
     username:
       from_secret: stage_registry_username
   when:
@@ -691,8 +682,6 @@ steps:
 
 - name: docker-publish
   image: plugins/docker
-  environment:
-    DOCKER_REGISTRY: stgregistry.suse.com
   settings:
     purge: false
     build_args:
@@ -703,7 +692,8 @@ steps:
     dockerfile: package/Dockerfile
     password:
       from_secret: stage_registry_password
-    repo: rancher/rancher
+    repo: stgregistry.suse.com/rancher/rancher
+    registry: stgregistry.suse.com
     tag: "${DRONE_TAG}-linux-arm64"
     username:
       from_secret: stage_registry_username
@@ -713,8 +703,6 @@ steps:
 
 - name: docker-publish-installer
   image: plugins/docker
-  environment:
-    DOCKER_REGISTRY: stgregistry.suse.com
   settings:
     purge: false
     build_args:
@@ -726,7 +714,8 @@ steps:
     dockerfile: package/Dockerfile.installer
     password:
       from_secret: stage_registry_password
-    repo: rancher/system-agent-installer-rancher
+    repo: stgregistry.suse.com/rancher/system-agent-installer-rancher
+    registry: stgregistry.suse.com
     tag: "${DRONE_TAG}-linux-arm64"
     username:
       from_secret: stage_registry_username
@@ -749,7 +738,8 @@ steps:
     dockerfile: package/Dockerfile.agent
     password:
       from_secret: stage_registry_password
-    repo: rancher/rancher-agent
+    repo: stgregistry.suse.com/rancher/rancher-agent
+    registry: stgregistry.suse.com
     tag: "${DRONE_TAG}-linux-arm64"
     username:
       from_secret: stage_registry_username
@@ -831,8 +821,6 @@ steps:
 
   - name: docker-publish-head-agent
     image: plugins/docker:windows-1809-amd64
-    environment:
-      DOCKER_REGISTRY: stgregistry.suse.com
     settings:
       purge: false
       build_args:
@@ -844,7 +832,8 @@ steps:
       dockerfile: package/windows/Dockerfile.agent
       password:
         from_secret: stage_registry_password
-      repo: rancher/rancher-agent
+      repo: stgregistry.suse.com/rancher/rancher-agent
+      registry: stgregistry.suse.com
       tag: ${DRONE_BRANCH/release\//}-${DRONE_COMMIT}-windows-1809
       username:
         from_secret: stage_registry_username
@@ -861,8 +850,6 @@ steps:
 
   - name: docker-publish-agent
     image: plugins/docker:windows-1809-amd64
-    environment:
-      DOCKER_REGISTRY: stgregistry.suse.com
     settings:
       purge: false
       build_args:
@@ -874,7 +861,8 @@ steps:
       dockerfile: package/windows/Dockerfile.agent
       password:
         from_secret: stage_registry_password
-      repo: rancher/rancher-agent
+      repo: stgregistry.suse.com/rancher/rancher-agent
+      registry: stgregistry.suse.com
       tag: "${DRONE_TAG}-windows-1809"
       username:
         from_secret: stage_registry_username
@@ -960,8 +948,6 @@ steps:
 
   - name: docker-publish-head-agent
     image: plugins/docker:windows-ltsc2022-amd64
-    environment:
-      DOCKER_REGISTRY: stgregistry.suse.com
     settings:
       purge: false
       build_args:
@@ -973,7 +959,8 @@ steps:
       dockerfile: package/windows/Dockerfile.agent
       password:
         from_secret: stage_registry_password
-      repo: rancher/rancher-agent
+      repo: stgregistry.suse.com/rancher/rancher-agent
+      registry: stgregistry.suse.com
       tag: ${DRONE_BRANCH/release\//}-${DRONE_COMMIT}-windows-ltsc2022
       username:
         from_secret: stage_registry_username
@@ -990,8 +977,6 @@ steps:
 
   - name: docker-publish-agent
     image: plugins/docker:windows-ltsc2022-amd64
-    environment:
-      DOCKER_REGISTRY: stgregistry.suse.com
     settings:
       purge: false
       build_args:
@@ -1003,7 +988,8 @@ steps:
       dockerfile: package/windows/Dockerfile.agent
       password:
         from_secret: stage_registry_password
-      repo: rancher/rancher-agent
+      repo: stgregistry.suse.com/rancher/rancher-agent
+      registry: stgregistry.suse.com
       tag: "${DRONE_TAG}-windows-ltsc2022"
       username:
         from_secret: stage_registry_username
