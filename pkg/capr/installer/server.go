@@ -1,6 +1,7 @@
 package installer
 
 import (
+	"github.com/sirupsen/logrus"
 	"net/http"
 )
 
@@ -21,6 +22,7 @@ func (s *handler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
 	if err != nil {
 		http.Error(rw, err.Error(), http.StatusInternalServerError)
+		logrus.Errorf("Hit an error getting the install script: %v", err)
 		return
 	}
 	rw.Header().Set("Content-Type", "text/plain")

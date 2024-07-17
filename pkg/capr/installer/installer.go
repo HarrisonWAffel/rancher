@@ -134,11 +134,17 @@ func WindowsInstallScript(ctx context.Context, token string, envVars []corev1.En
 
 	binaryURL := ""
 	if settings.WinsAgentVersion.Get() != "" {
-		if settings.ServerURL.Get() != "" {
+		if settings.WinsAgentBinaryBaseUrlOverride.Get() != "" {
+			binaryURL = fmt.Sprintf("$env:CATTLE_AGENT_BINARY_BASE_URL=\"%s\"", settings.WinsAgentBinaryBaseUrlOverride.Get())
+		} else if settings.ServerURL.Get() != "" {
 			binaryURL = fmt.Sprintf("$env:CATTLE_AGENT_BINARY_BASE_URL=\"%s/assets\"", settings.ServerURL.Get())
 		} else if defaultHost != "" {
 			binaryURL = fmt.Sprintf("$env:CATTLE_AGENT_BINARY_BASE_URL=\"https://%s/assets\"", defaultHost)
 		}
+	}
+
+	if binaryURL == "" {
+		return nil, fmt.Errorf("rancher wins binary url was empty")
 	}
 
 	csiProxyURL := settings.CSIProxyAgentURL.Get()

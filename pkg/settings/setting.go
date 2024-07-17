@@ -236,6 +236,12 @@ var (
 	// The environmental variable "CATTLE_BASE_REGISTRY" controls the default value of this setting.
 	SystemDefaultRegistry = NewSetting("system-default-registry", os.Getenv("CATTLE_BASE_REGISTRY"))
 
+	// WinsAgentBinaryBaseUrlOverride represents the base URL used to get the rancher-wins binary during Windows node provisioning.
+	// This is expected to be a base URL for an HTTP API with a `/wins.exe` endpoint. This setting should only be used for development purposes,
+	// official releases and any version in production should instead use the embedded rancher wins binary located at '<rancher-local-cluster>/assets/wins.exe'
+	// When using this setting, ensure that WinsAgentVersion is also set to a valid version of rancher-wins.
+	WinsAgentBinaryBaseUrlOverride = NewSetting("wins-agent-binary-base-url-override", os.Getenv("CATTLE_WINS_AGENT_BINARY_BASE_URL_OVERRIDE"))
+
 	// UIBanners holds configuration to display a custom fixed banner in the header, footer, or both
 	UIBanners = NewSetting("ui-banners", "{}")
 
