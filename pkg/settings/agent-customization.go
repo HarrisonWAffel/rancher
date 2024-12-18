@@ -123,4 +123,14 @@ const (
     ]
   }
 }`
+
+	ClusterAgentPriorityClass = `{
+    "preemptionPolicy": "PreemptLowerPriority",
+    "value": 10000000
+}`
+
+	ClusterAgentPodDisruptionBudget = `{
+	"minAvailable": 1,
+	"maxUnavailable": 0
+}`
 )

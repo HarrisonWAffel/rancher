@@ -28,9 +28,11 @@ import (
 var (
 	templateFuncMap = sprig.TxtFuncMap()
 	t               = template.Must(template.New("import").Funcs(templateFuncMap).Parse(templateSource))
+	pct             = template.Must(template.New("priorityClass").Funcs(templateFuncMap).Parse(cattleClusterAgentPriorityClassTemplate))
+	pdbt            = template.Must(template.New("podDisruptionBudget").Funcs(templateFuncMap).Parse(cattleClusterPodDisruptionBudgetTemplate))
 )
 
-type context struct {
+type clusterAgentContext struct {
 	Features              string
 	CAChecksum            string
 	AgentImage            string
@@ -50,6 +52,20 @@ type context struct {
 	Affinity              string
 	ResourceRequirements  string
 	ClusterRegistry       string
+
+	EnablePriorityClass bool
+	PodDisruptionBudget string
+}
+
+type priorityClassContext struct {
+	PriorityClassValue int
+	PreemptionPolicy   string
+	Description        string
+}
+
+type podDisruptionBudgetContext struct {
+	MinAvailable   string
+	MaxUnavailable string
 }
 
 func toFeatureString(features map[string]bool) string {
@@ -75,8 +91,55 @@ func toFeatureString(features map[string]bool) string {
 	return buf.String()
 }
 
-func SystemTemplate(resp io.Writer, agentImage, authImage, namespace, token, url string, isWindowsCluster bool, isPreBootstrap bool,
-	cluster *apimgmtv3.Cluster, features map[string]bool, taints []corev1.Taint, secretLister v1.SecretLister) error {
+func PriorityClassTemplate(cluster *apimgmtv3.Cluster) ([]byte, error) {
+	value, preemption := util.GetDesiredPriorityClassValueAndPreemption(cluster)
+
+	pctx := priorityClassContext{
+		PriorityClassValue: value,
+		PreemptionPolicy:   preemption,
+		Description:        util.PriorityClassDescription,
+	}
+
+	buf := &bytes.Buffer{}
+	err := pct.Execute(buf, pctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if buf.Len() == 0 {
+		return nil, nil
+	}
+
+	return buf.Bytes(), nil
+}
+
+func PodDisruptionBudgetTemplate(cluster *apimgmtv3.Cluster) ([]byte, error) {
+	minAvailable, maxUnavailable, err := util.GetDesiredDisruptionBudgetValues(cluster)
+	if err != nil {
+		return nil, err
+	}
+
+	pdbctx := podDisruptionBudgetContext{
+		MinAvailable:   minAvailable,
+		MaxUnavailable: maxUnavailable,
+	}
+
+	buf := &bytes.Buffer{}
+	err = pdbt.Execute(buf, pdbctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if buf.Len() == 0 {
+		return nil, nil
+	}
+
+	return buf.Bytes(), nil
+}
+
+func SystemTemplate(resp io.Writer, agentImage, authImage, namespace, token, url string, isWindowsCluster,
+	isPreBootstrap bool, cluster *apimgmtv3.Cluster, agentFeatures map[string]bool,
+	taints []corev1.Taint, secretLister v1.SecretLister, initialImportedRegistration bool) error {
 	var tolerations, agentEnvVars, agentAppendTolerations, agentAffinity, agentResourceRequirements string
 	d := md5.Sum([]byte(url + token + namespace))
 	tokenKey := hex.EncodeToString(d[:])[:7]
@@ -145,8 +208,21 @@ func SystemTemplate(resp io.Writer, agentImage, authImage, namespace, token, url
 		}
 	}
 
-	context := &context{
-		Features:              toFeatureString(features),
+	_, pcEnabled, pdbEnabled := util.AgentSchedulingCustomizationEnabled(cluster)
+	pcEnabled = pcEnabled && features.ClusterAgentSchedulingCustomization.Enabled()
+	pdbEnabled = pdbEnabled && features.ClusterAgentSchedulingCustomization.Enabled()
+
+	var pdb string
+	if pdbEnabled && !initialImportedRegistration {
+		pdbYaml, err := PodDisruptionBudgetTemplate(cluster)
+		if err != nil {
+			return err
+		}
+		pdb = string(pdbYaml)
+	}
+
+	context := &clusterAgentContext{
+		Features:              toFeatureString(agentFeatures),
 		CAChecksum:            CAChecksum(),
 		AgentImage:            agentImage,
 		AgentEnvVars:          agentEnvVars,
@@ -165,6 +241,11 @@ func SystemTemplate(resp io.Writer, agentImage, authImage, namespace, token, url
 		Affinity:              agentAffinity,
 		ResourceRequirements:  agentResourceRequirements,
 		ClusterRegistry:       registryURL,
+
+		PodDisruptionBudget: pdb,
+		// Because the cluster deploy controller is responsible for managing the PC,
+		// we cannot include the reference in the initial manifest.
+		EnablePriorityClass: !initialImportedRegistration && pcEnabled,
 	}
 
 	return t.Execute(resp, context)
@@ -192,11 +273,9 @@ func GetDesiredFeatures(cluster *apimgmtv3.Cluster) map[string]bool {
 
 func ForCluster(cluster *apimgmtv3.Cluster, token string, taints []corev1.Taint, secretLister v1.SecretLister) ([]byte, error) {
 	buf := &bytes.Buffer{}
-	err := SystemTemplate(buf, GetDesiredAgentImage(cluster),
-		GetDesiredAuthImage(cluster),
-		cluster.Name, token, settings.ServerURL.Get(),
-		cluster.Spec.WindowsPreferedCluster, capr.PreBootstrap(cluster),
-		cluster, GetDesiredFeatures(cluster), taints, secretLister)
+	err := SystemTemplate(buf, GetDesiredAgentImage(cluster), GetDesiredAuthImage(cluster), cluster.Name, token,
+		settings.ServerURL.Get(), cluster.Spec.WindowsPreferedCluster, capr.PreBootstrap(cluster), cluster,
+		GetDesiredFeatures(cluster), taints, secretLister, false)
 	return buf.Bytes(), err
 }
 

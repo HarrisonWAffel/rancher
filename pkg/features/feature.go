@@ -150,6 +150,12 @@ var (
 		true,
 		false,
 		true)
+	ClusterAgentSchedulingCustomization = newFeature(
+		"cluster-agent-scheduling-customization",
+		"Automatically create a Pod Disruption Budget and Priority Class for the cattle-cluster-agent",
+		false,
+		true,
+		true)
 )
 
 type Feature struct {

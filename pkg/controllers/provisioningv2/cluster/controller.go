@@ -2,6 +2,8 @@ package cluster
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
@@ -47,6 +49,8 @@ const (
 	mgmtClusterNameAnn    = "provisioning.cattle.io/management-cluster-name"
 	fleetWorkspaceNameAnn = "provisioning.cattle.io/fleet-workspace-name"
 	externallyManagedAnn  = "provisioning.cattle.io/externally-managed"
+
+	addSchedulingDefaultsAnn = "provisioning.cattle.io/enable-scheduling-customization"
 )
 
 var (
@@ -131,6 +135,9 @@ func Register(
 	)
 
 	clients.Mgmt.Cluster().OnChange(ctx, "cluster-watch", h.createToken)
+
+	clients.Provisioning.Cluster().OnChange(ctx, "scheduling-customization-backfill", h.updateSchedulingCustomization)
+
 	relatedresource.Watch(ctx, "cluster-watch", h.clusterWatch,
 		clients.Provisioning.Cluster(), clients.Mgmt.Cluster())
 
@@ -173,6 +180,57 @@ func (h *handler) clusterWatch(namespace, name string, obj runtime.Object) ([]re
 			Name:      operatorClusters[0].Name,
 		},
 	}, nil
+}
+
+func (h *handler) updateSchedulingCustomization(_ string, cluster *v1.Cluster) (*v1.Cluster, error) {
+	if cluster == nil {
+		return nil, nil
+	}
+
+	_, ok := cluster.ObjectMeta.Annotations[addSchedulingDefaultsAnn]
+	if !ok {
+		return cluster, nil
+	}
+
+	// annotation was added to a cluster that already has the fields set, we should not override the existing values.
+	if cluster.Spec.ClusterAgentDeploymentCustomization != nil && cluster.Spec.ClusterAgentDeploymentCustomization.SchedulingCustomization != nil {
+		delete(cluster.ObjectMeta.Annotations, addSchedulingDefaultsAnn)
+		return cluster, nil
+	}
+
+	defaultPC := settings.ClusterAgentDefaultPriorityClass.Get()
+	defaultPDB := settings.ClusterAgentDefaultPodDisruptionBudget.Get()
+
+	var pdb *v1.PodDisruptionBudgetSpec
+	var pc *v1.PriorityClassSpec
+
+	if defaultPC != "" {
+		pc = &v1.PriorityClassSpec{}
+		err := json.Unmarshal([]byte(defaultPC), pc)
+		if err != nil {
+			return cluster, fmt.Errorf("failed to unmarshal default cluster agent priority class: %w", err)
+		}
+	}
+
+	if defaultPDB != "" {
+		pdb = &v1.PodDisruptionBudgetSpec{}
+		err := json.Unmarshal([]byte(defaultPDB), &pdb)
+		if err != nil {
+			return cluster, fmt.Errorf("failed to unmarshal default cluster agent pod disruption budget: %w", err)
+		}
+	}
+
+	if cluster.Spec.ClusterAgentDeploymentCustomization == nil {
+		cluster.Spec.ClusterAgentDeploymentCustomization = &v1.AgentDeploymentCustomization{}
+	}
+
+	cluster.Spec.ClusterAgentDeploymentCustomization.SchedulingCustomization = &v1.AgentSchedulingCustomization{
+		PodDisruptionBudget: pdb,
+		PriorityClass:       pc,
+	}
+
+	delete(cluster.ObjectMeta.Annotations, addSchedulingDefaultsAnn)
+	return cluster, nil
 }
 
 // isLegacyCluster returns true if the cluster name for a clusters.provisioning.cattle.io/v1 or
@@ -226,6 +284,24 @@ func (h *handler) generateProvisioningClusterFromLegacyCluster(cluster *v3.Clust
 			AppendTolerations:            fleetAgentCustomizationCopy.AppendTolerations,
 			OverrideAffinity:             fleetAgentCustomizationCopy.OverrideAffinity,
 			OverrideResourceRequirements: fleetAgentCustomizationCopy.OverrideResourceRequirements,
+		}
+	}
+
+	if cluster.Spec.ClusterAgentDeploymentCustomization != nil && cluster.Spec.ClusterAgentDeploymentCustomization.SchedulingCustomization != nil {
+		provCluster.Spec.ClusterAgentDeploymentCustomization.SchedulingCustomization = &v1.AgentSchedulingCustomization{}
+
+		if cluster.Spec.ClusterAgentDeploymentCustomization.SchedulingCustomization.PodDisruptionBudget != nil {
+			provCluster.Spec.ClusterAgentDeploymentCustomization.SchedulingCustomization.PodDisruptionBudget = &v1.PodDisruptionBudgetSpec{
+				MinAvailable:   cluster.Spec.ClusterAgentDeploymentCustomization.SchedulingCustomization.PodDisruptionBudget.MinAvailable,
+				MaxUnavailable: cluster.Spec.ClusterAgentDeploymentCustomization.SchedulingCustomization.PodDisruptionBudget.MaxUnavailable,
+			}
+		}
+
+		if cluster.Spec.ClusterAgentDeploymentCustomization.SchedulingCustomization.PriorityClass != nil {
+			provCluster.Spec.ClusterAgentDeploymentCustomization.SchedulingCustomization.PriorityClass = &v1.PriorityClassSpec{
+				Value:      cluster.Spec.ClusterAgentDeploymentCustomization.SchedulingCustomization.PriorityClass.Value,
+				Preemption: cluster.Spec.ClusterAgentDeploymentCustomization.SchedulingCustomization.PriorityClass.Preemption,
+			}
 		}
 	}
 
@@ -353,6 +429,24 @@ func (h *handler) createNewCluster(cluster *v1.Cluster, status v1.ClusterStatus,
 			AppendTolerations:            fleetAgentCustomizationCopy.AppendTolerations,
 			OverrideAffinity:             fleetAgentCustomizationCopy.OverrideAffinity,
 			OverrideResourceRequirements: fleetAgentCustomizationCopy.OverrideResourceRequirements,
+		}
+	}
+
+	if cluster.Spec.ClusterAgentDeploymentCustomization != nil && cluster.Spec.ClusterAgentDeploymentCustomization.SchedulingCustomization != nil {
+		spec.ClusterAgentDeploymentCustomization.SchedulingCustomization = &v3.AgentSchedulingCustomization{}
+
+		if cluster.Spec.ClusterAgentDeploymentCustomization.SchedulingCustomization.PodDisruptionBudget != nil {
+			spec.ClusterAgentDeploymentCustomization.SchedulingCustomization.PodDisruptionBudget = &v3.PodDisruptionBudgetSpec{
+				MaxUnavailable: cluster.Spec.ClusterAgentDeploymentCustomization.SchedulingCustomization.PodDisruptionBudget.MaxUnavailable,
+				MinAvailable:   cluster.Spec.ClusterAgentDeploymentCustomization.SchedulingCustomization.PodDisruptionBudget.MinAvailable,
+			}
+		}
+
+		if cluster.Spec.ClusterAgentDeploymentCustomization.SchedulingCustomization.PriorityClass != nil {
+			spec.ClusterAgentDeploymentCustomization.SchedulingCustomization.PriorityClass = &v3.PriorityClassSpec{
+				Value:      cluster.Spec.ClusterAgentDeploymentCustomization.SchedulingCustomization.PriorityClass.Value,
+				Preemption: cluster.Spec.ClusterAgentDeploymentCustomization.SchedulingCustomization.PriorityClass.Preemption,
+			}
 		}
 	}
 
