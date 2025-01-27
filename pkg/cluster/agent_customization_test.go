@@ -102,6 +102,402 @@ func TestAgentCustomization_getPriorityClassValueAndPreemption(t *testing.T) {
 	}
 }
 
+func TestAgentCustomization_getAgentSchedulingCustomizationStatus(t *testing.T) {
+	tests := []struct {
+		name           string
+		cluster        *v3.Cluster
+		expectedStatus *v3.AgentSchedulingCustomization
+	}{
+		{
+			name: "full scheduling customization exists",
+			cluster: &v3.Cluster{
+				Status: v3.ClusterStatus{
+					AppliedClusterAgentDeploymentCustomization: &v3.AgentDeploymentCustomization{
+						SchedulingCustomization: &v3.AgentSchedulingCustomization{
+							PodDisruptionBudget: &v3.PodDisruptionBudgetSpec{
+								MinAvailable: "1",
+							},
+							PriorityClass: &v3.PriorityClassSpec{
+								Value: 123456,
+							},
+						},
+					},
+				},
+			},
+			expectedStatus: &v3.AgentSchedulingCustomization{
+				PodDisruptionBudget: &v3.PodDisruptionBudgetSpec{
+					MinAvailable: "1",
+				},
+				PriorityClass: &v3.PriorityClassSpec{
+					Value: 123456,
+				},
+			},
+		},
+		{
+			name: "no scheduling customization exists",
+			cluster: &v3.Cluster{
+				Status: v3.ClusterStatus{
+					AppliedClusterAgentDeploymentCustomization: &v3.AgentDeploymentCustomization{},
+				},
+			},
+			expectedStatus: nil,
+		},
+		{
+			name: "no deployment customization exists",
+			cluster: &v3.Cluster{
+				Status: v3.ClusterStatus{},
+			},
+			expectedStatus: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			returnedStatus := GetAgentSchedulingCustomizationStatus(tt.cluster)
+			assert.Equal(t, returnedStatus, tt.expectedStatus)
+		})
+	}
+}
+
+func TestAgentCustomization_agentSchedulingCustomizationEnabled(t *testing.T) {
+	tests := []struct {
+		name       string
+		cluster    *v3.Cluster
+		pcEnabled  bool
+		pdbEnabled bool
+	}{
+		{
+			name:       "PC and PDB enabled",
+			pcEnabled:  true,
+			pdbEnabled: true,
+			cluster: &v3.Cluster{
+				Spec: v3.ClusterSpec{
+					ClusterSpecBase: v3.ClusterSpecBase{
+						ClusterAgentDeploymentCustomization: &v3.AgentDeploymentCustomization{
+							SchedulingCustomization: &v3.AgentSchedulingCustomization{
+								PodDisruptionBudget: &v3.PodDisruptionBudgetSpec{
+									MinAvailable: "1",
+								},
+								PriorityClass: &v3.PriorityClassSpec{
+									Value: 12345,
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:       "Only PC enabled",
+			pcEnabled:  true,
+			pdbEnabled: false,
+			cluster: &v3.Cluster{
+				Spec: v3.ClusterSpec{
+					ClusterSpecBase: v3.ClusterSpecBase{
+						ClusterAgentDeploymentCustomization: &v3.AgentDeploymentCustomization{
+							SchedulingCustomization: &v3.AgentSchedulingCustomization{
+								PriorityClass: &v3.PriorityClassSpec{
+									Value: 12345,
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:       "Only PDB enabled",
+			pcEnabled:  false,
+			pdbEnabled: true,
+			cluster: &v3.Cluster{
+				Spec: v3.ClusterSpec{
+					ClusterSpecBase: v3.ClusterSpecBase{
+						ClusterAgentDeploymentCustomization: &v3.AgentDeploymentCustomization{
+							SchedulingCustomization: &v3.AgentSchedulingCustomization{
+								PodDisruptionBudget: &v3.PodDisruptionBudgetSpec{
+									MinAvailable: "1",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:       "neither enabled",
+			pcEnabled:  false,
+			pdbEnabled: false,
+			cluster: &v3.Cluster{
+				Spec: v3.ClusterSpec{
+					ClusterSpecBase: v3.ClusterSpecBase{
+						ClusterAgentDeploymentCustomization: &v3.AgentDeploymentCustomization{},
+					},
+				},
+			},
+		},
+	}
+
+	t.Parallel()
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			pcEnabled, pdbEnabled := AgentSchedulingCustomizationEnabled(tt.cluster)
+			assert.Equal(t, tt.pcEnabled, pcEnabled)
+			assert.Equal(t, tt.pdbEnabled, pdbEnabled)
+		})
+	}
+}
+
+func TestAgentCustomization_getAgentSchedulingCustomizationSpec(t *testing.T) {
+	tests := []struct {
+		name           string
+		cluster        *v3.Cluster
+		expectedStatus *v3.AgentSchedulingCustomization
+	}{
+		{
+			name: "full scheduling customization exists",
+			cluster: &v3.Cluster{
+				Spec: v3.ClusterSpec{
+					ClusterSpecBase: v3.ClusterSpecBase{
+						ClusterAgentDeploymentCustomization: &v3.AgentDeploymentCustomization{
+							SchedulingCustomization: &v3.AgentSchedulingCustomization{
+								PodDisruptionBudget: &v3.PodDisruptionBudgetSpec{
+									MinAvailable: "1",
+								},
+								PriorityClass: &v3.PriorityClassSpec{
+									Value: 123456,
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedStatus: &v3.AgentSchedulingCustomization{
+				PodDisruptionBudget: &v3.PodDisruptionBudgetSpec{
+					MinAvailable: "1",
+				},
+				PriorityClass: &v3.PriorityClassSpec{
+					Value: 123456,
+				},
+			},
+		},
+		{
+			name: "no scheduling customization exists",
+			cluster: &v3.Cluster{
+				Spec: v3.ClusterSpec{
+					ClusterSpecBase: v3.ClusterSpecBase{
+						ClusterAgentDeploymentCustomization: &v3.AgentDeploymentCustomization{},
+					},
+				},
+			},
+			expectedStatus: nil,
+		},
+		{
+			name: "no deployment customization exists",
+			cluster: &v3.Cluster{
+				Spec: v3.ClusterSpec{
+					ClusterSpecBase: v3.ClusterSpecBase{},
+				},
+			},
+			expectedStatus: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			returnedStatus := GetAgentSchedulingCustomizationSpec(tt.cluster)
+			assert.Equal(t, returnedStatus, tt.expectedStatus)
+		})
+	}
+}
+
+func TestAgentCustomization_updateAppliedAgentDeploymentCustomization(t *testing.T) {
+	testClusterAgentToleration := []corev1.Toleration{{
+		Effect: "NoSchedule",
+		Key:    "node-role.kubernetes.io/controlplane-test",
+		Value:  "true",
+	}}
+
+	testClusterAgentAffinity := &corev1.Affinity{
+		NodeAffinity: &corev1.NodeAffinity{
+			PreferredDuringSchedulingIgnoredDuringExecution: []corev1.PreferredSchedulingTerm{
+				{
+					Weight: 1,
+					Preference: corev1.NodeSelectorTerm{
+						MatchExpressions: []corev1.NodeSelectorRequirement{
+							{
+								Key:      "cattle.io/cluster-agent-test",
+								Operator: corev1.NodeSelectorOpIn,
+								Values:   []string{"true"},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	testClusterAgentResourceReq := &corev1.ResourceRequirements{
+		Limits: map[corev1.ResourceName]resource.Quantity{
+			"cpu":    *resource.NewQuantity(500, resource.DecimalSI),
+			"memory": *resource.NewQuantity(250, resource.DecimalSI),
+		},
+		Requests: map[corev1.ResourceName]resource.Quantity{
+			"cpu":    *resource.NewQuantity(500, resource.DecimalSI),
+			"memory": *resource.NewQuantity(250, resource.DecimalSI),
+		},
+	}
+
+	neverPreemptionPolicy := corev1.PreemptionPolicy("Never")
+
+	tests := []struct {
+		name           string
+		cluster        *v3.Cluster
+		expectedStatus *v3.AgentDeploymentCustomization
+		updatePC       bool
+		featureEnabled bool
+	}{
+		{
+			name:           "update all fields, including PC",
+			updatePC:       true,
+			featureEnabled: true,
+			cluster: &v3.Cluster{
+				Status: v3.ClusterStatus{},
+				Spec: v3.ClusterSpec{
+					ClusterSpecBase: v3.ClusterSpecBase{
+						ClusterAgentDeploymentCustomization: &v3.AgentDeploymentCustomization{
+							AppendTolerations:            testClusterAgentToleration,
+							OverrideAffinity:             testClusterAgentAffinity,
+							OverrideResourceRequirements: testClusterAgentResourceReq,
+							SchedulingCustomization: &v3.AgentSchedulingCustomization{
+								PriorityClass: &v3.PriorityClassSpec{
+									Value:      123456,
+									Preemption: &neverPreemptionPolicy,
+								},
+								PodDisruptionBudget: &v3.PodDisruptionBudgetSpec{
+									MinAvailable: "1",
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedStatus: &v3.AgentDeploymentCustomization{
+				AppendTolerations:            testClusterAgentToleration,
+				OverrideAffinity:             testClusterAgentAffinity,
+				OverrideResourceRequirements: testClusterAgentResourceReq,
+				SchedulingCustomization: &v3.AgentSchedulingCustomization{
+					PriorityClass: &v3.PriorityClassSpec{
+						Value:      123456,
+						Preemption: &neverPreemptionPolicy,
+					},
+					PodDisruptionBudget: &v3.PodDisruptionBudgetSpec{
+						MinAvailable: "1",
+					},
+				},
+			},
+		},
+		{
+			name:           "attempt to update all fields, scheduling customization feature disabled",
+			updatePC:       true,
+			featureEnabled: false,
+			cluster: &v3.Cluster{
+				Status: v3.ClusterStatus{},
+				Spec: v3.ClusterSpec{
+					ClusterSpecBase: v3.ClusterSpecBase{
+						ClusterAgentDeploymentCustomization: &v3.AgentDeploymentCustomization{
+							AppendTolerations:            testClusterAgentToleration,
+							OverrideAffinity:             testClusterAgentAffinity,
+							OverrideResourceRequirements: testClusterAgentResourceReq,
+							SchedulingCustomization: &v3.AgentSchedulingCustomization{
+								PriorityClass: &v3.PriorityClassSpec{
+									Value:      123456,
+									Preemption: &neverPreemptionPolicy,
+								},
+								PodDisruptionBudget: &v3.PodDisruptionBudgetSpec{
+									MinAvailable: "1",
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedStatus: &v3.AgentDeploymentCustomization{
+				AppendTolerations:            testClusterAgentToleration,
+				OverrideAffinity:             testClusterAgentAffinity,
+				OverrideResourceRequirements: testClusterAgentResourceReq,
+			},
+		},
+		{
+			name:           "update all fields, excluding PC",
+			updatePC:       false,
+			featureEnabled: true,
+			cluster: &v3.Cluster{
+				Status: v3.ClusterStatus{},
+				Spec: v3.ClusterSpec{
+					ClusterSpecBase: v3.ClusterSpecBase{
+						ClusterAgentDeploymentCustomization: &v3.AgentDeploymentCustomization{
+							AppendTolerations:            testClusterAgentToleration,
+							OverrideAffinity:             testClusterAgentAffinity,
+							OverrideResourceRequirements: testClusterAgentResourceReq,
+							SchedulingCustomization: &v3.AgentSchedulingCustomization{
+								PriorityClass: &v3.PriorityClassSpec{
+									Value:      123456,
+									Preemption: &neverPreemptionPolicy,
+								},
+								PodDisruptionBudget: &v3.PodDisruptionBudgetSpec{
+									MinAvailable: "1",
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedStatus: &v3.AgentDeploymentCustomization{
+				AppendTolerations:            testClusterAgentToleration,
+				OverrideAffinity:             testClusterAgentAffinity,
+				OverrideResourceRequirements: testClusterAgentResourceReq,
+				SchedulingCustomization: &v3.AgentSchedulingCustomization{
+					PodDisruptionBudget: &v3.PodDisruptionBudgetSpec{
+						MinAvailable: "1",
+					},
+				},
+			},
+		},
+		{
+			name:     "update only non-scheduling fields",
+			updatePC: false,
+			cluster: &v3.Cluster{
+				Status: v3.ClusterStatus{},
+				Spec: v3.ClusterSpec{
+					ClusterSpecBase: v3.ClusterSpecBase{
+						ClusterAgentDeploymentCustomization: &v3.AgentDeploymentCustomization{
+							AppendTolerations:            testClusterAgentToleration,
+							OverrideAffinity:             testClusterAgentAffinity,
+							OverrideResourceRequirements: testClusterAgentResourceReq,
+						},
+					},
+				},
+			},
+			expectedStatus: &v3.AgentDeploymentCustomization{
+				AppendTolerations:            testClusterAgentToleration,
+				OverrideAffinity:             testClusterAgentAffinity,
+				OverrideResourceRequirements: testClusterAgentResourceReq,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			UpdateAppliedAgentDeploymentCustomization(tt.cluster, tt.updatePC, tt.featureEnabled)
+			assert.Equal(t, tt.expectedStatus, tt.cluster.Status.AppliedClusterAgentDeploymentCustomization)
+		})
+	}
+}
+
 func TestAgentCustomization_getDesiredPodDisruptionBudgetValuesAsString(t *testing.T) {
 	tests := []struct {
 		name                   string
@@ -219,56 +615,26 @@ func TestAgentCustomization_getDesiredPodDisruptionBudgetValuesAsString(t *testi
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			minAvailable, maxUnavailable, _ := GetDesiredDisruptionBudgetValues(tt.cluster)
+			minAvailable, maxUnavailable, _ := GetDesiredPodDisruptionBudgetValues(tt.cluster)
 			assert.Equal(t, tt.expectedMinAvailable, minAvailable)
 			assert.Equal(t, tt.expectedMaxUnavailable, maxUnavailable)
 		})
 	}
-
 }
 
-func TestAgentCustomization_agentSchedulingCustomizationEnabled(t *testing.T) {
+func TestAgentCustomization_agentSchedulingPodDisruptionBudgetChanged(t *testing.T) {
 	tests := []struct {
-		name            string
-		cluster         *v3.Cluster
-		shouldBeEnabled bool
-		pcEnabled       bool
-		pdbEnabled      bool
+		name           string
+		cluster        *v3.Cluster
+		updateExpected bool
+		deleteExpected bool
 	}{
 		{
-			name:            "customization is not enabled",
-			shouldBeEnabled: false,
-			pcEnabled:       false,
-			pdbEnabled:      false,
+			name:           "create new PDB definition",
+			updateExpected: true,
+			deleteExpected: false,
 			cluster: &v3.Cluster{
-				Spec: v3.ClusterSpec{},
-			},
-		},
-		{
-			name:            "customization is enabled - only PC",
-			shouldBeEnabled: true,
-			pcEnabled:       true,
-			pdbEnabled:      false,
-			cluster: &v3.Cluster{
-				Spec: v3.ClusterSpec{
-					ClusterSpecBase: v3.ClusterSpecBase{
-						ClusterAgentDeploymentCustomization: &v3.AgentDeploymentCustomization{
-							SchedulingCustomization: &v3.AgentSchedulingCustomization{
-								PriorityClass: &v3.PriorityClassSpec{
-									Value: 1,
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-		{
-			name:            "customization is enabled - only PDB",
-			shouldBeEnabled: true,
-			pcEnabled:       false,
-			pdbEnabled:      true,
-			cluster: &v3.Cluster{
+				Status: v3.ClusterStatus{},
 				Spec: v3.ClusterSpec{
 					ClusterSpecBase: v3.ClusterSpecBase{
 						ClusterAgentDeploymentCustomization: &v3.AgentDeploymentCustomization{
@@ -283,350 +649,164 @@ func TestAgentCustomization_agentSchedulingCustomizationEnabled(t *testing.T) {
 			},
 		},
 		{
-			name:            "customization is enabled - both",
-			shouldBeEnabled: true,
-			pcEnabled:       true,
-			pdbEnabled:      true,
+			name:           "update existing PDB definition",
+			updateExpected: true,
+			deleteExpected: false,
 			cluster: &v3.Cluster{
+				Status: v3.ClusterStatus{
+					AppliedClusterAgentDeploymentCustomization: &v3.AgentDeploymentCustomization{
+						SchedulingCustomization: &v3.AgentSchedulingCustomization{
+							PodDisruptionBudget: &v3.PodDisruptionBudgetSpec{
+								MinAvailable: "1",
+							},
+						},
+					},
+				},
 				Spec: v3.ClusterSpec{
 					ClusterSpecBase: v3.ClusterSpecBase{
 						ClusterAgentDeploymentCustomization: &v3.AgentDeploymentCustomization{
 							SchedulingCustomization: &v3.AgentSchedulingCustomization{
 								PodDisruptionBudget: &v3.PodDisruptionBudgetSpec{
-									MinAvailable: "1",
-								},
-								PriorityClass: &v3.PriorityClassSpec{
-									Value: 1,
+									MinAvailable: "2",
 								},
 							},
 						},
 					},
+				},
+			},
+		},
+		{
+			name:           "delete existing PDB definition",
+			updateExpected: false,
+			deleteExpected: true,
+			cluster: &v3.Cluster{
+				Status: v3.ClusterStatus{
+					AppliedClusterAgentDeploymentCustomization: &v3.AgentDeploymentCustomization{
+						SchedulingCustomization: &v3.AgentSchedulingCustomization{
+							PodDisruptionBudget: &v3.PodDisruptionBudgetSpec{
+								MinAvailable: "1",
+							},
+						},
+					},
+				},
+				Spec: v3.ClusterSpec{
+					ClusterSpecBase: v3.ClusterSpecBase{},
 				},
 			},
 		},
 	}
 
 	t.Parallel()
-
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			enabled, pcEnabled, pdbEnabled := AgentSchedulingCustomizationEnabled(tt.cluster)
-			assert.Equal(t, tt.shouldBeEnabled, enabled)
-			assert.Equal(t, tt.pdbEnabled, pdbEnabled)
-			assert.Equal(t, tt.pcEnabled, pcEnabled)
+			pdbUpdated, pdbDeleted := AgentSchedulingPodDisruptionBudgetChanged(tt.cluster)
+			assert.Equal(t, tt.updateExpected, pdbUpdated)
+			assert.Equal(t, tt.deleteExpected, pdbDeleted)
 		})
 	}
 }
 
-func TestAgentCustomization_agentSchedulingCustomizationChanged(t *testing.T) {
-	type test struct {
-		name       string
-		cluster    *v3.Cluster
-		PDBDiffers bool
-		PCDiffers  bool
-		PCDeleted  bool
-		PCCreated  bool
-	}
-
-	preemption := corev1.PreemptionPolicy("PreemptLowerPriority")
-
-	testPC := &v3.PriorityClassSpec{
-		Value:      5000,
-		Preemption: &preemption,
-	}
-
-	modifiedTestPC := &v3.PriorityClassSpec{
-		Value:      1,
-		Preemption: &preemption,
-	}
-
-	testPDB := &v3.PodDisruptionBudgetSpec{
-		MinAvailable: "1",
-	}
-
-	modifiedTestPDB := &v3.PodDisruptionBudgetSpec{
-		MaxUnavailable: "1",
-	}
-
-	tests := []test{
+func TestAgentCustomization_agentSchedulingPriorityClassChanged(t *testing.T) {
+	tests := []struct {
+		name           string
+		cluster        *v3.Cluster
+		createExpected bool
+		updateExpected bool
+		deleteExpected bool
+	}{
 		{
-			name:       "no customization",
-			PDBDiffers: false,
-			PCDeleted:  false,
-			PCDiffers:  false,
-			PCCreated:  false,
+			name:           "create new PC definition",
+			createExpected: true,
+			updateExpected: false,
+			deleteExpected: false,
 			cluster: &v3.Cluster{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-agent-customization",
-				},
-				Spec:   v3.ClusterSpec{},
 				Status: v3.ClusterStatus{},
-			},
-		},
-		{
-			name:       "no scheduling customization",
-			PDBDiffers: false,
-			PCDeleted:  false,
-			PCDiffers:  false,
-			PCCreated:  false,
-			cluster: &v3.Cluster{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-agent-customization",
-				},
 				Spec: v3.ClusterSpec{
 					ClusterSpecBase: v3.ClusterSpecBase{
-						ClusterAgentDeploymentCustomization: &v3.AgentDeploymentCustomization{},
+						ClusterAgentDeploymentCustomization: &v3.AgentDeploymentCustomization{
+							SchedulingCustomization: &v3.AgentSchedulingCustomization{
+								PriorityClass: &v3.PriorityClassSpec{
+									Value: 12345,
+								},
+							},
+						},
 					},
-				},
-				Status: v3.ClusterStatus{
-					AppliedClusterAgentDeploymentCustomization: &v3.AgentDeploymentCustomization{},
 				},
 			},
 		},
 		{
-			name:       "first time creating PC",
-			PDBDiffers: false,
-			PCDiffers:  true,
-			PCDeleted:  false,
-			PCCreated:  true,
+			name:           "update existing PC definition",
+			createExpected: false,
+			updateExpected: true,
+			deleteExpected: false,
 			cluster: &v3.Cluster{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-agent-customization",
+				Status: v3.ClusterStatus{
+					AppliedClusterAgentDeploymentCustomization: &v3.AgentDeploymentCustomization{
+						SchedulingCustomization: &v3.AgentSchedulingCustomization{
+							PriorityClass: &v3.PriorityClassSpec{
+								Value: 12345,
+							},
+						},
+					},
 				},
 				Spec: v3.ClusterSpec{
 					ClusterSpecBase: v3.ClusterSpecBase{
 						ClusterAgentDeploymentCustomization: &v3.AgentDeploymentCustomization{
 							SchedulingCustomization: &v3.AgentSchedulingCustomization{
-								PriorityClass: testPC,
+								PriorityClass: &v3.PriorityClassSpec{
+									Value: 54321,
+								},
 							},
 						},
 					},
 				},
-				Status: v3.ClusterStatus{},
 			},
 		},
 		{
-			name:       "first time creating PDB",
-			PDBDiffers: true,
-			PCDiffers:  false,
-			PCDeleted:  false,
-			PCCreated:  false,
+			name:           "delete existing PC definition",
+			createExpected: false,
+			updateExpected: false,
+			deleteExpected: true,
 			cluster: &v3.Cluster{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-agent-customization",
-				},
-				Spec: v3.ClusterSpec{
-					ClusterSpecBase: v3.ClusterSpecBase{
-						ClusterAgentDeploymentCustomization: &v3.AgentDeploymentCustomization{
-							SchedulingCustomization: &v3.AgentSchedulingCustomization{
-								PodDisruptionBudget: testPDB,
+				Status: v3.ClusterStatus{
+					AppliedClusterAgentDeploymentCustomization: &v3.AgentDeploymentCustomization{
+						SchedulingCustomization: &v3.AgentSchedulingCustomization{
+							PriorityClass: &v3.PriorityClassSpec{
+								Value: 12345,
 							},
 						},
 					},
-				},
-				Status: v3.ClusterStatus{},
-			},
-		},
-		{
-			name:       "first time creating PDB and PC",
-			PDBDiffers: true,
-			PCDiffers:  true,
-			PCDeleted:  false,
-			PCCreated:  true,
-			cluster: &v3.Cluster{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-agent-customization",
-				},
-				Spec: v3.ClusterSpec{
-					ClusterSpecBase: v3.ClusterSpecBase{
-						ClusterAgentDeploymentCustomization: &v3.AgentDeploymentCustomization{
-							SchedulingCustomization: &v3.AgentSchedulingCustomization{
-								PodDisruptionBudget: testPDB,
-								PriorityClass:       testPC,
-							},
-						},
-					},
-				},
-				Status: v3.ClusterStatus{},
-			},
-		},
-		{
-			name:       "updating PDB",
-			PDBDiffers: true,
-			PCDiffers:  false,
-			PCDeleted:  false,
-			PCCreated:  false,
-			cluster: &v3.Cluster{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-agent-customization",
-				},
-				Spec: v3.ClusterSpec{
-					ClusterSpecBase: v3.ClusterSpecBase{
-						ClusterAgentDeploymentCustomization: &v3.AgentDeploymentCustomization{
-							SchedulingCustomization: &v3.AgentSchedulingCustomization{
-								PodDisruptionBudget: modifiedTestPDB,
-							},
-						},
-					},
-				},
-				Status: v3.ClusterStatus{
-					AppliedClusterAgentDeploymentCustomization: &v3.AgentDeploymentCustomization{
-						SchedulingCustomization: &v3.AgentSchedulingCustomization{
-							PodDisruptionBudget: testPDB,
-						},
-					},
-				},
-			},
-		},
-		{
-			name:       "updating PC",
-			PDBDiffers: false,
-			PCDiffers:  true,
-			PCDeleted:  false,
-			PCCreated:  false,
-			cluster: &v3.Cluster{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-agent-customization",
-				},
-				Spec: v3.ClusterSpec{
-					ClusterSpecBase: v3.ClusterSpecBase{
-						ClusterAgentDeploymentCustomization: &v3.AgentDeploymentCustomization{
-							SchedulingCustomization: &v3.AgentSchedulingCustomization{
-								PriorityClass: modifiedTestPC,
-							},
-						},
-					},
-				},
-				Status: v3.ClusterStatus{
-					AppliedClusterAgentDeploymentCustomization: &v3.AgentDeploymentCustomization{
-						SchedulingCustomization: &v3.AgentSchedulingCustomization{
-							PriorityClass: testPC,
-						},
-					},
-				},
-			},
-		},
-		{
-			name:       "deleting PC",
-			PDBDiffers: false,
-			PCDiffers:  true,
-			PCDeleted:  true,
-			PCCreated:  false,
-			cluster: &v3.Cluster{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-agent-customization",
-				},
-				Spec: v3.ClusterSpec{
-					ClusterSpecBase: v3.ClusterSpecBase{
-						ClusterAgentDeploymentCustomization: &v3.AgentDeploymentCustomization{
-							SchedulingCustomization: &v3.AgentSchedulingCustomization{},
-						},
-					},
-				},
-				Status: v3.ClusterStatus{
-					AppliedClusterAgentDeploymentCustomization: &v3.AgentDeploymentCustomization{
-						SchedulingCustomization: &v3.AgentSchedulingCustomization{
-							PriorityClass: testPC,
-						},
-					},
-				},
-			},
-		},
-		{
-			name:       "deleting PDB",
-			PDBDiffers: true,
-			PCDiffers:  false,
-			PCDeleted:  false,
-			PCCreated:  false,
-			cluster: &v3.Cluster{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-agent-customization",
-				},
-				Spec: v3.ClusterSpec{
-					ClusterSpecBase: v3.ClusterSpecBase{
-						ClusterAgentDeploymentCustomization: &v3.AgentDeploymentCustomization{
-							SchedulingCustomization: &v3.AgentSchedulingCustomization{},
-						},
-					},
-				},
-				Status: v3.ClusterStatus{
-					AppliedClusterAgentDeploymentCustomization: &v3.AgentDeploymentCustomization{
-						SchedulingCustomization: &v3.AgentSchedulingCustomization{
-							PodDisruptionBudget: testPDB,
-						},
-					},
-				},
-			},
-		},
-		{
-			name:       "deleting both PDB and PC",
-			PDBDiffers: true,
-			PCDiffers:  true,
-			PCDeleted:  true,
-			PCCreated:  false,
-			cluster: &v3.Cluster{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-agent-customization",
-				},
-				Spec: v3.ClusterSpec{
-					ClusterSpecBase: v3.ClusterSpecBase{
-						ClusterAgentDeploymentCustomization: &v3.AgentDeploymentCustomization{
-							SchedulingCustomization: &v3.AgentSchedulingCustomization{},
-						},
-					},
-				},
-				Status: v3.ClusterStatus{
-					AppliedClusterAgentDeploymentCustomization: &v3.AgentDeploymentCustomization{
-						SchedulingCustomization: &v3.AgentSchedulingCustomization{
-							PriorityClass:       testPC,
-							PodDisruptionBudget: testPDB,
-						},
-					},
-				},
-			},
-		},
-		{
-			name:       "deleting both PDB and PC",
-			PDBDiffers: true,
-			PCDiffers:  true,
-			PCDeleted:  true,
-			PCCreated:  false,
-			cluster: &v3.Cluster{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-agent-customization",
 				},
 				Spec: v3.ClusterSpec{
 					ClusterSpecBase: v3.ClusterSpecBase{},
 				},
+			},
+		},
+		{
+			name:           "no existing PC definition",
+			createExpected: false,
+			updateExpected: false,
+			deleteExpected: false,
+			cluster: &v3.Cluster{
 				Status: v3.ClusterStatus{
-					AppliedClusterAgentDeploymentCustomization: &v3.AgentDeploymentCustomization{
-						SchedulingCustomization: &v3.AgentSchedulingCustomization{
-							PriorityClass:       testPC,
-							PodDisruptionBudget: testPDB,
-						},
-					},
+					AppliedClusterAgentDeploymentCustomization: &v3.AgentDeploymentCustomization{},
+				},
+				Spec: v3.ClusterSpec{
+					ClusterSpecBase: v3.ClusterSpecBase{},
 				},
 			},
 		},
 	}
 
-	for _, tst := range tests {
-		tst := tst
-		t.Run(tst.name, func(t *testing.T) {
-			pdbChanged, pcChanged, pcDeleted, pcCreated := AgentSchedulingCustomizationChanged(tst.cluster)
-			if pdbChanged != tst.PDBDiffers {
-				t.Fail()
-			}
-			if pcChanged != tst.PCDiffers {
-				t.Fail()
-			}
-			if pcDeleted != tst.PCDeleted {
-				t.Fail()
-			}
-			if pcCreated != tst.PCCreated {
-				t.Fail()
-			}
+	t.Parallel()
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			pcUpdated, pcCreated, pcDeleted := AgentSchedulingPriorityClassChanged(tt.cluster)
+			assert.Equal(t, tt.updateExpected, pcUpdated)
+			assert.Equal(t, tt.deleteExpected, pcDeleted)
+			assert.Equal(t, tt.createExpected, pcCreated)
 		})
 	}
 }
@@ -856,6 +1036,7 @@ func TestAgentCustomization_agentDeploymentCustomizationChanged(t *testing.T) {
 		},
 	}
 
+	t.Parallel()
 	for _, tst := range tests {
 		tst := tst
 		t.Run(tst.name, func(t *testing.T) {

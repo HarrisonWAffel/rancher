@@ -130,7 +130,7 @@ const (
 }`
 
 	ClusterAgentPodDisruptionBudget = `{
-	"minAvailable": 1,
-	"maxUnavailable": 0
+	"minAvailable": "1",
+	"maxUnavailable": "0"
 }`
 )

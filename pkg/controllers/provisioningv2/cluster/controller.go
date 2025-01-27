@@ -50,7 +50,7 @@ const (
 	fleetWorkspaceNameAnn = "provisioning.cattle.io/fleet-workspace-name"
 	externallyManagedAnn  = "provisioning.cattle.io/externally-managed"
 
-	addSchedulingDefaultsAnn = "provisioning.cattle.io/enable-scheduling-customization"
+	manageSchedulingDefaultsAnn = "provisioning.cattle.io/enable-scheduling-customization"
 )
 
 var (
@@ -187,15 +187,34 @@ func (h *handler) updateSchedulingCustomization(_ string, cluster *v1.Cluster) (
 		return nil, nil
 	}
 
-	_, ok := cluster.ObjectMeta.Annotations[addSchedulingDefaultsAnn]
+	if !features.ClusterAgentSchedulingCustomization.Enabled() {
+		return cluster, nil
+	}
+
+	value, ok := cluster.ObjectMeta.Annotations[manageSchedulingDefaultsAnn]
 	if !ok {
 		return cluster, nil
 	}
 
+	lowerVal := strings.ToLower(value)
+	if lowerVal != "true" && lowerVal != "false" {
+		return cluster, nil
+	}
+
+	cluster = cluster.DeepCopy()
+	if lowerVal == "false" {
+		delete(cluster.ObjectMeta.Annotations, manageSchedulingDefaultsAnn)
+		if cluster.Spec.ClusterAgentDeploymentCustomization == nil {
+			return h.clusters.Update(cluster)
+		}
+		cluster.Spec.ClusterAgentDeploymentCustomization.SchedulingCustomization = nil
+		return h.clusters.Update(cluster)
+	}
+
 	// annotation was added to a cluster that already has the fields set, we should not override the existing values.
 	if cluster.Spec.ClusterAgentDeploymentCustomization != nil && cluster.Spec.ClusterAgentDeploymentCustomization.SchedulingCustomization != nil {
-		delete(cluster.ObjectMeta.Annotations, addSchedulingDefaultsAnn)
-		return cluster, nil
+		delete(cluster.ObjectMeta.Annotations, manageSchedulingDefaultsAnn)
+		return h.clusters.Update(cluster)
 	}
 
 	defaultPC := settings.ClusterAgentDefaultPriorityClass.Get()
@@ -229,8 +248,8 @@ func (h *handler) updateSchedulingCustomization(_ string, cluster *v1.Cluster) (
 		PriorityClass:       pc,
 	}
 
-	delete(cluster.ObjectMeta.Annotations, addSchedulingDefaultsAnn)
-	return cluster, nil
+	delete(cluster.ObjectMeta.Annotations, manageSchedulingDefaultsAnn)
+	return h.clusters.Update(cluster)
 }
 
 // isLegacyCluster returns true if the cluster name for a clusters.provisioning.cattle.io/v1 or

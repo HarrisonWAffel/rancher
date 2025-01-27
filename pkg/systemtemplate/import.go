@@ -114,7 +114,7 @@ func PriorityClassTemplate(cluster *apimgmtv3.Cluster) ([]byte, error) {
 }
 
 func PodDisruptionBudgetTemplate(cluster *apimgmtv3.Cluster) ([]byte, error) {
-	minAvailable, maxUnavailable, err := util.GetDesiredDisruptionBudgetValues(cluster)
+	minAvailable, maxUnavailable, err := util.GetDesiredPodDisruptionBudgetValues(cluster)
 	if err != nil {
 		return nil, err
 	}
@@ -137,9 +137,7 @@ func PodDisruptionBudgetTemplate(cluster *apimgmtv3.Cluster) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func SystemTemplate(resp io.Writer, agentImage, authImage, namespace, token, url string, isWindowsCluster,
-	isPreBootstrap bool, cluster *apimgmtv3.Cluster, agentFeatures map[string]bool,
-	taints []corev1.Taint, secretLister v1.SecretLister, initialImportedRegistration bool) error {
+func SystemTemplate(resp io.Writer, agentImage, authImage, namespace, token, url string, isWindowsCluster, isPreBootstrap bool, cluster *apimgmtv3.Cluster, agentFeatures map[string]bool, taints []corev1.Taint, secretLister v1.SecretLister) error {
 	var tolerations, agentEnvVars, agentAppendTolerations, agentAffinity, agentResourceRequirements string
 	d := md5.Sum([]byte(url + token + namespace))
 	tokenKey := hex.EncodeToString(d[:])[:7]
@@ -208,18 +206,25 @@ func SystemTemplate(resp io.Writer, agentImage, authImage, namespace, token, url
 		}
 	}
 
-	_, pcEnabled, pdbEnabled := util.AgentSchedulingCustomizationEnabled(cluster)
-	pcEnabled = pcEnabled && features.ClusterAgentSchedulingCustomization.Enabled()
-	pdbEnabled = pdbEnabled && features.ClusterAgentSchedulingCustomization.Enabled()
+	var pcEnabled, pdbEnabled bool
+	if features.ClusterAgentSchedulingCustomization.Enabled() {
+		pcEnabled, pdbEnabled = util.AgentSchedulingCustomizationEnabled(cluster)
+	}
 
 	var pdb string
-	if pdbEnabled && !initialImportedRegistration {
+	if pdbEnabled {
 		pdbYaml, err := PodDisruptionBudgetTemplate(cluster)
 		if err != nil {
 			return err
 		}
 		pdb = string(pdbYaml)
 	}
+
+	// Regardless of cluster type, we cannot include the PC reference in the
+	// initial manifest, as the controller which creates it only runs once the agent has
+	// connected for the first time.
+	schedulingStatus := util.GetAgentSchedulingCustomizationStatus(cluster)
+	pcExists := schedulingStatus != nil && schedulingStatus.PriorityClass != nil
 
 	context := &clusterAgentContext{
 		Features:              toFeatureString(agentFeatures),
@@ -243,9 +248,7 @@ func SystemTemplate(resp io.Writer, agentImage, authImage, namespace, token, url
 		ClusterRegistry:       registryURL,
 
 		PodDisruptionBudget: pdb,
-		// Because the cluster deploy controller is responsible for managing the PC,
-		// we cannot include the reference in the initial manifest.
-		EnablePriorityClass: !initialImportedRegistration && pcEnabled,
+		EnablePriorityClass: pcExists && pcEnabled,
 	}
 
 	return t.Execute(resp, context)
@@ -275,7 +278,7 @@ func ForCluster(cluster *apimgmtv3.Cluster, token string, taints []corev1.Taint,
 	buf := &bytes.Buffer{}
 	err := SystemTemplate(buf, GetDesiredAgentImage(cluster), GetDesiredAuthImage(cluster), cluster.Name, token,
 		settings.ServerURL.Get(), cluster.Spec.WindowsPreferedCluster, capr.PreBootstrap(cluster), cluster,
-		GetDesiredFeatures(cluster), taints, secretLister, false)
+		GetDesiredFeatures(cluster), taints, secretLister)
 	return buf.Bytes(), err
 }
 
