@@ -2,8 +2,6 @@ package cluster
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
@@ -51,7 +49,7 @@ const (
 	fleetWorkspaceNameAnn = "provisioning.cattle.io/fleet-workspace-name"
 	externallyManagedAnn  = "provisioning.cattle.io/externally-managed"
 
-	addSchedulingDefaultsAnn = "provisioning.cattle.io/enable-scheduling-customization"
+	manageSchedulingDefaultsAnn = "provisioning.cattle.io/enable-scheduling-customization"
 )
 
 var (
@@ -139,7 +137,8 @@ func Register(
 
 	clients.Mgmt.Cluster().OnChange(ctx, "cluster-watch", h.createToken)
 
-	clients.Provisioning.Cluster().OnChange(ctx, "scheduling-customization-backfill", h.updateSchedulingCustomization)
+	clients.Provisioning.Cluster().OnChange(ctx, "v1-scheduling-customization-backfill", h.updateV1SchedulingCustomization)
+	clients.Mgmt.Cluster().OnChange(ctx, "v3-scheduling-customization-backfill", h.updateV3SchedulingCustomization)
 
 	relatedresource.Watch(ctx, "cluster-watch", h.clusterWatch,
 		clients.Provisioning.Cluster(), clients.Mgmt.Cluster())
@@ -183,57 +182,6 @@ func (h *handler) clusterWatch(namespace, name string, obj runtime.Object) ([]re
 			Name:      operatorClusters[0].Name,
 		},
 	}, nil
-}
-
-func (h *handler) updateSchedulingCustomization(_ string, cluster *v1.Cluster) (*v1.Cluster, error) {
-	if cluster == nil {
-		return nil, nil
-	}
-
-	_, ok := cluster.ObjectMeta.Annotations[addSchedulingDefaultsAnn]
-	if !ok {
-		return cluster, nil
-	}
-
-	// annotation was added to a cluster that already has the fields set, we should not override the existing values.
-	if cluster.Spec.ClusterAgentDeploymentCustomization != nil && cluster.Spec.ClusterAgentDeploymentCustomization.SchedulingCustomization != nil {
-		delete(cluster.ObjectMeta.Annotations, addSchedulingDefaultsAnn)
-		return cluster, nil
-	}
-
-	defaultPC := settings.ClusterAgentDefaultPriorityClass.Get()
-	defaultPDB := settings.ClusterAgentDefaultPodDisruptionBudget.Get()
-
-	var pdb *v1.PodDisruptionBudgetSpec
-	var pc *v1.PriorityClassSpec
-
-	if defaultPC != "" {
-		pc = &v1.PriorityClassSpec{}
-		err := json.Unmarshal([]byte(defaultPC), pc)
-		if err != nil {
-			return cluster, fmt.Errorf("failed to unmarshal default cluster agent priority class: %w", err)
-		}
-	}
-
-	if defaultPDB != "" {
-		pdb = &v1.PodDisruptionBudgetSpec{}
-		err := json.Unmarshal([]byte(defaultPDB), &pdb)
-		if err != nil {
-			return cluster, fmt.Errorf("failed to unmarshal default cluster agent pod disruption budget: %w", err)
-		}
-	}
-
-	if cluster.Spec.ClusterAgentDeploymentCustomization == nil {
-		cluster.Spec.ClusterAgentDeploymentCustomization = &v1.AgentDeploymentCustomization{}
-	}
-
-	cluster.Spec.ClusterAgentDeploymentCustomization.SchedulingCustomization = &v1.AgentSchedulingCustomization{
-		PodDisruptionBudget: pdb,
-		PriorityClass:       pc,
-	}
-
-	delete(cluster.ObjectMeta.Annotations, addSchedulingDefaultsAnn)
-	return cluster, nil
 }
 
 // isLegacyCluster returns true if the cluster name for a clusters.provisioning.cattle.io/v1 or

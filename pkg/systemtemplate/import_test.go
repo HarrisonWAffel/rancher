@@ -50,7 +50,7 @@ func TestSystemTemplate_systemtemplate(t *testing.T) {
 	tests := []struct {
 		name                              string
 		cluster                           *apimgmtv3.Cluster
-		isProvV2                          bool
+		pcExists                          bool
 		agentImage                        string
 		authImage                         string
 		namespace                         string
@@ -144,14 +144,63 @@ func TestSystemTemplate_systemtemplate(t *testing.T) {
 			},
 		},
 		{
-			name:     "test-provisioned-import with scheduling customization",
-			isProvV2: true,
+			name:     "test-provisioned-import with scheduling customization, initial registration",
+			pcExists: false,
 			cluster: &apimgmtv3.Cluster{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test-prov",
 				},
-				Status: apimgmtv3.ClusterStatus{
-					Provider: "rke2",
+				Spec: apimgmtv3.ClusterSpec{
+					ImportedConfig: &apimgmtv3.ImportedConfig{},
+					ClusterSpecBase: apimgmtv3.ClusterSpecBase{
+						ClusterAgentDeploymentCustomization: &apimgmtv3.AgentDeploymentCustomization{
+							SchedulingCustomization: &apimgmtv3.AgentSchedulingCustomization{
+								PriorityClass: &apimgmtv3.PriorityClassSpec{
+									Value:      123456,
+									Preemption: &preemption,
+								},
+								PodDisruptionBudget: &apimgmtv3.PodDisruptionBudgetSpec{
+									MinAvailable: "1",
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedDeploymentHashes: map[string]string{
+				"cattle-cluster-agent": "734cc6a47dfa564f230d39da48782e6f2ba9a55e0385aaa4d2fa7405375d8527",
+			},
+			expectedDaemonSetHashes: map[string]string{},
+			expectedClusterRoleHashes: map[string]string{
+				"proxy-clusterrole-kubeapiserver": "0d28ae2947ce0c5faef85ff59169a5f65e0490552bf9cb00f29a98eb97a02a7e",
+				"cattle-admin":                    "009abecc023b1e4ac1bc35e4153ef4492b2bc66a5972df9c5617a38f587c3f42",
+			},
+			expectedClusterRoleBindingHashes: map[string]string{
+				"proxy-role-binding-kubernetes-master": "0df909395597974e60d905e9860bc0a02367bd2df74528d430c635c3f7afdeb0",
+				"cattle-admin-binding":                 "0da37cf0d4c4b4d068a3000967c4e37d11e1cecd126779633095dbe30b39c6ba",
+			},
+			expectedNamespaceHashes: map[string]string{
+				"cattle-system": "fd527fed9cae2e8b27f9610d64e9476e692a3dfde42954aeaecba450fe2b9571",
+			},
+			expectedServiceHashes: map[string]string{
+				"cattle-cluster-agent": "9512a8430f6d32f31eac6e4446724dc5a336c3d9c8147c824f2734c2f8afe792",
+			},
+			expectedServiceAccountHashes: map[string]string{
+				"cattle": "5cf160de85eaef5de9ce917130c64c23e91836920f7e9b2e2d7a8be8290079f2",
+			},
+			expectedSecretHashes: map[string]string{
+				"cattle-credentials-d41d8cd": "131d05388e50e23e5f22eb3b54676910e6ded959b3dd1333f7bc2096ee2e95e9",
+			},
+			expectedPodDisruptionBudgetHashes: map[string]string{
+				"cattle-cluster-agent-pod-disruption-budget": "89bb4831cc31587904eaacb4d6d395b33984c8940b7a3e71e3066788a805e483",
+			},
+		},
+		{
+			name:     "test-provisioned-import with scheduling customization, cluster deploy creation",
+			pcExists: true,
+			cluster: &apimgmtv3.Cluster{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-prov",
 				},
 				Spec: apimgmtv3.ClusterSpec{
 					ImportedConfig: &apimgmtv3.ImportedConfig{},
@@ -244,8 +293,7 @@ func TestSystemTemplate_systemtemplate(t *testing.T) {
 
 			mockSecrets = tt.secrets
 			var b bytes.Buffer
-			err := SystemTemplate(&b, tt.agentImage, tt.authImage, tt.namespace, tt.token, tt.url,
-				tt.isWindowsCluster, tt.isPreBootstrap, tt.cluster, tt.features, tt.taints, secretLister, false)
+			err := SystemTemplate(&b, tt.agentImage, tt.authImage, tt.namespace, tt.token, tt.url, tt.isWindowsCluster, tt.isPreBootstrap, tt.cluster, tt.features, tt.taints, secretLister, tt.pcExists)
 
 			assert.Nil(t, err)
 			decoder := scheme.Codecs.UniversalDeserializer()
@@ -326,6 +374,8 @@ func TestSystemTemplate_systemtemplate(t *testing.T) {
 					if err != nil {
 						assert.FailNow(t, err.Error())
 					}
+					x := getHash(b)
+					_ = x
 					assert.Equal(t, tt.expectedPodDisruptionBudgetHashes[pdb.Name], getHash(b), fmt.Sprintf("%s/%s", groupVersionKind.Kind, pdb.Name))
 				default:
 					assert.FailNow(t, fmt.Sprintf("unexpected Kind for GVK: %s", groupVersionKind.String()))

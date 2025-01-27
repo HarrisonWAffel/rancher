@@ -212,7 +212,6 @@ spec:
           - name: cattle-credentials
             mountPath: /cattle-credentials
             readOnly: true
-
       {{- if .PrivateRegistryConfig}}
       imagePullSecrets:
       - name: cattle-private-registry

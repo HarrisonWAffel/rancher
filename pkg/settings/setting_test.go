@@ -126,12 +126,12 @@ func TestGetMachineProvisionImagePullPolicy(t *testing.T) {
 			expected: v1.PullIfNotPresent,
 		},
 		{
-			name:     "Wrong PriorityClassValue",
+			name:     "Wrong Value",
 			input:    "wrongValue",
 			expected: v1.PullAlways,
 		},
 		{
-			name:     "Empty PriorityClassValue",
+			name:     "Empty Value",
 			input:    "",
 			expected: v1.PullAlways,
 		},

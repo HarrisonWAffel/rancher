@@ -3,17 +3,18 @@ package cluster
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/rancher/rancher/pkg/features"
 	"reflect"
-	"strconv"
-	"strings"
 
 	v3 "github.com/rancher/rancher/pkg/apis/management.cattle.io/v3"
 	"github.com/rancher/rancher/pkg/settings"
 	corev1 "k8s.io/api/core/v1"
 )
 
-const PriorityClassDescription = "Rancher managed Priority Class for the cattle-cluster-agent"
+const (
+	PriorityClassName        = "cattle-cluster-agent-priority-class"
+	PodDisruptionBudgetName  = "cattle-cluster-agent-pod-disruption-budget"
+	PriorityClassDescription = "Rancher managed Priority Class for the cattle-cluster-agent"
+)
 
 // GetClusterAgentTolerations returns additional tolerations for the cluster agent if they have been user defined. If
 // not, nil is returned.
@@ -93,10 +94,38 @@ func unmarshalAffinity(affinity string) (*corev1.Affinity, error) {
 	return &affinityObj, nil
 }
 
+// GetAgentSchedulingCustomizationSpec returns the SchedulingCustomization field located in the cluster spec if it exists
+func GetAgentSchedulingCustomizationSpec(cluster *v3.Cluster) *v3.AgentSchedulingCustomization {
+	if cluster == nil {
+		return nil
+	}
+
+	specCustomization := cluster.Spec.ClusterAgentDeploymentCustomization
+	if specCustomization == nil {
+		return nil
+	}
+
+	return specCustomization.SchedulingCustomization
+}
+
+// GetAgentSchedulingCustomizationStatus returns the SchedulingCustomization field located in the cluster status if it exists
+func GetAgentSchedulingCustomizationStatus(cluster *v3.Cluster) *v3.AgentSchedulingCustomization {
+	if cluster == nil {
+		return nil
+	}
+
+	statusCustomization := cluster.Status.AppliedClusterAgentDeploymentCustomization
+	if statusCustomization == nil {
+		return nil
+	}
+
+	return statusCustomization.SchedulingCustomization
+}
+
 // AgentDeploymentCustomizationChanged determines if the ClusterAgentDeploymentCustomization spec field
-// matches the values set in the status. The returned boolean indicates that either the desired Affinities,
-// tolerations, or resource requirements have been changed. AgentDeploymentCustomizationChanged Does not indicate
-// if any SchedulingCustomization options have been changed.
+// matches the values set in the status. The returned booleans indicates that either the desired Affinities,
+// tolerations, or resource requirements have been changed (in that order).
+// AgentDeploymentCustomizationChanged Does not indicate if any SchedulingCustomization options have been changed.
 func AgentDeploymentCustomizationChanged(cluster *v3.Cluster) bool {
 	if cluster == nil {
 		return false
@@ -123,7 +152,7 @@ func AgentDeploymentCustomizationChanged(cluster *v3.Cluster) bool {
 	}
 
 	var affinitiesDiffer, tolerationsDiffer, resourcesDiffer bool
-	// if nothing is in the status then it is the first time we're creating these objects
+
 	if specCustomization != nil && statusCustomization == nil {
 		affinitiesDiffer = specCustomization.OverrideAffinity != nil
 		tolerationsDiffer = specCustomization.AppendTolerations != nil
@@ -147,145 +176,111 @@ func AgentDeploymentCustomizationChanged(cluster *v3.Cluster) bool {
 	return affinitiesDiffer || tolerationsDiffer || resourcesDiffer
 }
 
-// AgentSchedulingCustomizationChanged Determines if the values set in the ClusterAgentDeploymentCustomization.SchedulingCustomization
-// spec field matches those set in the status. Four booleans are returned to indicate (in this order) if the PDB has been changed, if the Priority Class
-// has been changed, if the PDB has been deleted, if the Priority Class has been deleted, or if the PriorityCLass has been created for the first time.
-func AgentSchedulingCustomizationChanged(cluster *v3.Cluster) (bool, bool, bool, bool, bool) {
-	if cluster == nil {
-		return false, false, false, false, false
-	}
-
-	specCustomization := cluster.Spec.ClusterAgentDeploymentCustomization
-	statusCustomization := cluster.Status.AppliedClusterAgentDeploymentCustomization
+// AgentSchedulingPodDisruptionBudgetChanged compares the cluster spec and status to determine if the
+// cluster agent Pod Disruption Budget has been updated or deleted (in that order).
+func AgentSchedulingPodDisruptionBudgetChanged(cluster *v3.Cluster) (bool, bool) {
+	specCustomization := GetAgentSchedulingCustomizationSpec(cluster)
+	statusCustomization := GetAgentSchedulingCustomizationStatus(cluster)
 
 	if specCustomization == nil && statusCustomization == nil {
-		return false, false, false, false, false
+		return false, false
 	}
 
-	var specScheduling *v3.AgentSchedulingCustomization
-	if specCustomization != nil && specCustomization.SchedulingCustomization != nil {
-		specScheduling = specCustomization.SchedulingCustomization
-	}
-
-	var statusScheduling *v3.AgentSchedulingCustomization
-	if statusCustomization != nil && statusCustomization.SchedulingCustomization != nil {
-		statusScheduling = statusCustomization.SchedulingCustomization
-	}
-
-	if specScheduling == nil && statusScheduling == nil {
-		return false, false, false, false, false
-	}
-
-	// all objects deleted
-	if specScheduling == nil && statusScheduling != nil {
-		return true, true, true, true, false
-	}
-
-	// first time creating the objects
-	if specScheduling != nil && statusScheduling == nil {
-		// if the feature isn't enabled
-		// and the PC/PDB has not been previously created
-		// then we should not indicate any changes
-		if !features.ClusterAgentSchedulingCustomization.Enabled() {
-			return false, false, false, false, false
+	if specCustomization != nil && statusCustomization == nil {
+		if specCustomization.PodDisruptionBudget != nil {
+			return true, false
 		}
-
-		pcExists := specCustomization.SchedulingCustomization.PriorityClass != nil
-		pdbExists := specCustomization.SchedulingCustomization.PodDisruptionBudget != nil
-		return pdbExists, pcExists, false, false, pcExists
+		return false, false
 	}
 
-	// per object handling
-	pdbDiffer := !reflect.DeepEqual(specScheduling.PodDisruptionBudget, statusScheduling.PodDisruptionBudget)
-	pcDiffer := !reflect.DeepEqual(specScheduling.PriorityClass, statusScheduling.PriorityClass)
-	pdbDelete := specScheduling.PodDisruptionBudget == nil && statusScheduling.PodDisruptionBudget != nil
-	pcDelete := specScheduling.PriorityClass == nil && statusScheduling.PriorityClass != nil
-	pcCreate := specScheduling.PriorityClass != nil && statusScheduling.PriorityClass == nil
+	if specCustomization == nil && statusCustomization != nil {
+		if statusCustomization.PodDisruptionBudget != nil {
+			return false, true
+		}
+		return false, false
+	}
 
-	return pdbDiffer, pcDiffer, pdbDelete, pcDelete, pcCreate
+	return !reflect.DeepEqual(specCustomization.PodDisruptionBudget, statusCustomization.PodDisruptionBudget), specCustomization.PodDisruptionBudget == nil
+}
+
+// AgentSchedulingPriorityClassChanged compares the cluster spec and status to determine if the
+// cluster agent Priority Class has been changed, created, or deleted (in that order).
+func AgentSchedulingPriorityClassChanged(cluster *v3.Cluster) (bool, bool, bool) {
+	specCustomization := GetAgentSchedulingCustomizationSpec(cluster)
+	statusCustomization := GetAgentSchedulingCustomizationStatus(cluster)
+
+	if specCustomization == nil && statusCustomization == nil {
+		return false, false, false
+	}
+
+	if specCustomization != nil && statusCustomization == nil {
+		if specCustomization.PriorityClass != nil {
+			return false, true, false
+		}
+		return false, false, false
+	}
+
+	if specCustomization == nil && statusCustomization != nil {
+		if statusCustomization.PriorityClass != nil {
+			return false, false, true
+		}
+		return false, false, false
+	}
+
+	return !reflect.DeepEqual(specCustomization.PriorityClass, statusCustomization.PriorityClass), false, specCustomization.PriorityClass == nil
 }
 
 // AgentSchedulingCustomizationEnabled determines if scheduling customization has been defined for either the
-// PriorityClass or PodDisruptionBudget. It returns three bools, which indicate if either field has been defined,
-// if the Priority Class has been defined, and if the Pod Disruption Budget has been defined.
-func AgentSchedulingCustomizationEnabled(cluster *v3.Cluster) (bool, bool, bool) {
+// PriorityClass or PodDisruptionBudget. It returns two booleans, which indicate if the Priority Class has
+// been defined, and if the Pod Disruption Budget has been defined.
+func AgentSchedulingCustomizationEnabled(cluster *v3.Cluster) (bool, bool) {
 	if cluster == nil {
-		return false, false, false
+		return false, false
 	}
 
-	if !features.ClusterAgentSchedulingCustomization.Enabled() {
-		return false, false, false
+	specCustomization := GetAgentSchedulingCustomizationSpec(cluster)
+	if specCustomization == nil {
+		return false, false
 	}
 
-	agentCustomization := cluster.Spec.ClusterAgentDeploymentCustomization
+	pdbEnabled := specCustomization.PodDisruptionBudget != nil
+	pcEnabled := specCustomization.PriorityClass != nil
 
-	if agentCustomization == nil || agentCustomization.SchedulingCustomization == nil {
-		return false, false, false
-	}
-
-	pdbEnabled := agentCustomization.SchedulingCustomization.PodDisruptionBudget != nil
-	pcEnabled := agentCustomization.SchedulingCustomization.PriorityClass != nil
-
-	return pdbEnabled || pcEnabled, pcEnabled, pdbEnabled
+	return pcEnabled, pdbEnabled
 }
 
-// GetDesiredDisruptionBudgetValues returns the minAvailable and maxUnavailable fields values in the agent SchedulingCustomization
+// GetDesiredPodDisruptionBudgetValues returns the minAvailable and maxUnavailable fields values in the agent SchedulingCustomization
 // if they have been set. If both fields are set to zero, only a value for maxUnavailable will be returned, as Pod Disruption Budgets
 // can only set one of the two fields at a time. The validating webhook ensures that both fields cannot be set on the cluster agent prior
 // to this function being invoked.
-func GetDesiredDisruptionBudgetValues(cluster *v3.Cluster) (string, string, error) {
+func GetDesiredPodDisruptionBudgetValues(cluster *v3.Cluster) (string, string) {
 	if cluster == nil {
-		return "", "", nil
+		return "", ""
 	}
 
-	PDBMaxUnavailable := ""
-	PDBMinAvailable := ""
-	agentCustomization := cluster.Spec.ClusterAgentDeploymentCustomization
-	if agentCustomization == nil || agentCustomization.SchedulingCustomization == nil || agentCustomization.SchedulingCustomization.PodDisruptionBudget == nil {
-		return "", "", nil
+	agentCustomization := GetAgentSchedulingCustomizationSpec(cluster)
+	if agentCustomization == nil {
+		return "", ""
 	}
 
-	var minAvailInt, maxUnavailInt int
-	var err error
-
-	minAvailStr := agentCustomization.SchedulingCustomization.PodDisruptionBudget.MinAvailable
-	if minAvailStr != "" && !strings.Contains(minAvailStr, "%") {
-		minAvailInt, err = strconv.Atoi(minAvailStr)
-		if err != nil {
-			return "", "", err
-		}
+	if agentCustomization.PodDisruptionBudget == nil {
+		return "", ""
 	}
 
-	maxUnavailStr := agentCustomization.SchedulingCustomization.PodDisruptionBudget.MaxUnavailable
-	if maxUnavailStr != "" && !strings.Contains(maxUnavailStr, "%") {
-		maxUnavailInt, err = strconv.Atoi(maxUnavailStr)
-		if err != nil {
-			return "", "", err
-		}
+	PDBMinAvailable := agentCustomization.PodDisruptionBudget.MinAvailable
+	PDBMaxUnavailable := agentCustomization.PodDisruptionBudget.MaxUnavailable
+
+	if (PDBMinAvailable == "" || PDBMinAvailable == "0") && PDBMaxUnavailable != "" {
+		return "", PDBMaxUnavailable
 	}
 
-	if minAvailInt > 0 {
-		PDBMinAvailable = strconv.Itoa(minAvailInt)
-	} else if minAvailStr != "0" {
-		PDBMinAvailable = minAvailStr
+	if PDBMinAvailable != "" && (PDBMaxUnavailable == "" || PDBMaxUnavailable == "0") {
+		return PDBMinAvailable, ""
 	}
 
-	if maxUnavailInt > 0 {
-		PDBMaxUnavailable = strconv.Itoa(maxUnavailInt)
-	} else if maxUnavailStr != "0" {
-		PDBMaxUnavailable = maxUnavailStr
-	}
-
-	if PDBMinAvailable == "" && PDBMaxUnavailable != "" {
-		return "", PDBMaxUnavailable, nil
-	}
-
-	if PDBMinAvailable != "" && PDBMaxUnavailable == "" {
-		return PDBMinAvailable, "", nil
-	}
-
-	// if both are set to zero, default to using maxUnavailable
-	return "", "0", nil
+	// The webhook should prevent this, but if both are
+	// somehow set, default to using maxUnavailable
+	return "", "0"
 }
 
 // GetDesiredPriorityClassValueAndPreemption returns the Priority Class priority value and Preemption setting
@@ -295,57 +290,51 @@ func GetDesiredPriorityClassValueAndPreemption(cluster *v3.Cluster) (int, string
 		return 0, ""
 	}
 
+	agentCustomization := GetAgentSchedulingCustomizationSpec(cluster)
+	if agentCustomization == nil {
+		return 0, ""
+	}
+
+	if agentCustomization.PriorityClass == nil {
+		return 0, ""
+	}
+
 	var PCPreemption string
-	var PCValue int
-
-	agentCustomization := cluster.Spec.ClusterAgentDeploymentCustomization
-	if agentCustomization == nil || agentCustomization.SchedulingCustomization == nil {
-		return 0, ""
+	if agentCustomization.PriorityClass.Preemption != nil {
+		PCPreemption = string(*agentCustomization.PriorityClass.Preemption)
 	}
 
-	if agentCustomization.SchedulingCustomization.PriorityClass == nil {
-		return 0, ""
-	}
-
-	PCValue = agentCustomization.SchedulingCustomization.PriorityClass.Value
-	if agentCustomization.SchedulingCustomization.PriorityClass.Preemption != nil {
-		PCPreemption = string(*agentCustomization.SchedulingCustomization.PriorityClass.Preemption)
-	}
-
-	return PCValue, PCPreemption
+	return agentCustomization.PriorityClass.Value, PCPreemption
 }
 
-func UpdateAppliedAgentDeploymentCustomization(cluster *v3.Cluster, updatePC bool) {
+// UpdateAppliedAgentDeploymentCustomization updates the cluster AppliedClusterAgentDeploymentCustomization Status
+// field with the most recent configuration located in the Spec.
+func UpdateAppliedAgentDeploymentCustomization(cluster *v3.Cluster) {
 	if cluster == nil {
 		return
 	}
 
 	agentCustomization := cluster.Spec.ClusterAgentDeploymentCustomization
 	if agentCustomization == nil {
+		cluster.Status.AppliedClusterAgentDeploymentCustomization = nil
 		return
 	}
 
-	appliedCustomization := &v3.AgentDeploymentCustomization{}
+	// If the deployment customization struct exists, but all of its
+	// fields are empty, we should just clear it
+	if agentCustomization.AppendTolerations == nil &&
+		agentCustomization.OverrideAffinity == nil &&
+		agentCustomization.OverrideResourceRequirements == nil &&
+		agentCustomization.SchedulingCustomization == nil {
 
-	appliedCustomization.OverrideAffinity = agentCustomization.OverrideAffinity
-	appliedCustomization.OverrideResourceRequirements = agentCustomization.OverrideResourceRequirements
-	appliedCustomization.AppendTolerations = agentCustomization.AppendTolerations
-
-	// if the feature is disabled then we shouldn't do anything
-	if agentCustomization.SchedulingCustomization == nil || !features.ClusterAgentSchedulingCustomization.Enabled() {
-		cluster.Status.AppliedClusterAgentDeploymentCustomization = appliedCustomization
+		cluster.Status.AppliedClusterAgentDeploymentCustomization = nil
 		return
 	}
 
-	appliedCustomization.SchedulingCustomization = &v3.AgentSchedulingCustomization{
-		PodDisruptionBudget: agentCustomization.SchedulingCustomization.PodDisruptionBudget,
+	cluster.Status.AppliedClusterAgentDeploymentCustomization = &v3.AgentDeploymentCustomization{
+		AppendTolerations:            agentCustomization.AppendTolerations,
+		OverrideAffinity:             agentCustomization.OverrideAffinity,
+		OverrideResourceRequirements: agentCustomization.OverrideResourceRequirements,
+		SchedulingCustomization:      agentCustomization.SchedulingCustomization,
 	}
-
-	if updatePC {
-		appliedCustomization.SchedulingCustomization.PriorityClass = agentCustomization.SchedulingCustomization.PriorityClass
-	}
-
-	cluster.Status.AppliedClusterAgentDeploymentCustomization = appliedCustomization
-
-	return
 }
