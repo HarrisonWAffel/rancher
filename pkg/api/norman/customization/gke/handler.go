@@ -54,8 +54,11 @@ func (h *handler) ServeHTTP(writer http.ResponseWriter, req *http.Request) {
 
 	capa := &Capabilities{}
 
+	resourceType := mux.Vars(req)["resource"]
+
 	if credID := req.URL.Query().Get("cloudCredentialId"); credID != "" {
-		if errCode, err := h.getCloudCredential(req, capa, credID); err != nil {
+		endpointRequiresProjectId := resourceType != "gkeListImageFamily"
+		if errCode, err := h.getCloudCredential(req, capa, credID, endpointRequiresProjectId); err != nil {
 			handleErr(writer, errCode, err)
 			return
 		}
@@ -72,8 +75,6 @@ func (h *handler) ServeHTTP(writer http.ResponseWriter, req *http.Request) {
 	var serialized []byte
 	var errCode int
 	var err error
-
-	resourceType := mux.Vars(req)["resource"]
 
 	switch resourceType {
 	case "gkeMachineTypes":
@@ -133,12 +134,30 @@ func (h *handler) ServeHTTP(writer http.ResponseWriter, req *http.Request) {
 			return
 		}
 		writer.Write(serialized)
+	case "gkeListImageFamily":
+		family := req.URL.Query().Get("imageFamily")
+		if family == "" {
+			handleErr(writer, http.StatusBadRequest, fmt.Errorf("must provide an image family"))
+		}
+		if serialized, errCode, err = listImageFamily(req.Context(), capa, family); err != nil {
+			logrus.Errorf("[gke-handler] error getting images: %v", err)
+			handleErr(writer, errCode, err)
+			return
+		}
+		writer.Write(serialized)
+	case "gkeListDiskTypes":
+		if serialized, errCode, err = listDiskTypes(req.Context(), capa); err != nil {
+			logrus.Errorf("[gke-handler] error getting disk types: %v", err)
+			handleErr(writer, errCode, err)
+			return
+		}
+		writer.Write(serialized)
 	default:
 		handleErr(writer, httperror.NotFound.Status, fmt.Errorf("invalid endpoint %v", resourceType))
 	}
 }
 
-func (h *handler) getCloudCredential(req *http.Request, cap *Capabilities, credID string) (int, error) {
+func (h *handler) getCloudCredential(req *http.Request, cap *Capabilities, credID string, projectIDRequired bool) (int, error) {
 	ns, name := ref.Parse(credID)
 	if ns == "" || name == "" {
 		logrus.Errorf("[GKE] invalid cloud credential ID %s", credID)
@@ -170,7 +189,7 @@ func (h *handler) getCloudCredential(req *http.Request, cap *Capabilities, credI
 	cap.Credentials = string(cc.Data["googlecredentialConfig-authEncodedJson"])
 
 	cap.ProjectID = req.URL.Query().Get("projectId")
-	if cap.ProjectID == "" {
+	if cap.ProjectID == "" && projectIDRequired {
 		logrus.Errorf("[GKE] error getting projectId")
 		return http.StatusBadRequest, fmt.Errorf("error getting projectId")
 	}

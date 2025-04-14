@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"net/http"
 
 	"golang.org/x/oauth2"
@@ -245,6 +246,54 @@ func listSharedSubnets(ctx context.Context, cap *Capabilities) ([]byte, int, err
 	}
 
 	return encodeOutput(result)
+}
+
+// listDiskTypes lists the available disk types for a given GCP project and region.
+func listDiskTypes(ctx context.Context, cap *Capabilities) ([]byte, int, error) {
+	client, err := getComputeServiceClient(ctx, cap.Credentials)
+	if err != nil {
+		return nil, http.StatusInternalServerError, err
+	}
+
+	result, err := client.DiskTypes.List(cap.ProjectID, cap.Zone).Do()
+	if err != nil {
+		return nil, http.StatusInternalServerError, fmt.Errorf("failed to list disk types: %w", err)
+	}
+
+	return encodeOutput(result)
+}
+
+func listImageFamily(ctx context.Context, cap *Capabilities, family string) ([]byte, int, error) {
+	client, err := getComputeServiceClient(ctx, cap.Credentials)
+	if err != nil {
+		return nil, http.StatusInternalServerError, err
+	}
+
+	requestedFamilies := []string{family}
+
+	if family == "common" {
+		requestedFamilies = []string{
+			"ubuntu-os-cloud",
+			"suse-cloud",
+			"opensuse-cloud",
+			"rhel-cloud",
+			"debian-cloud",
+		}
+	}
+
+	var out []*compute.ImageList
+	for _, e := range requestedFamilies {
+		l, err := client.Images.List(e).Do()
+		if err != nil {
+			log.Errorf("error encountered getting image list for family '%s': %w", e, err)
+			continue
+		}
+		if l != nil {
+			out = append(out, l)
+		}
+	}
+
+	return encodeOutput(out)
 }
 
 func encodeOutput(result interface{}) ([]byte, int, error) {
