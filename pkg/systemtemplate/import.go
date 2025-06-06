@@ -40,7 +40,6 @@ type context struct {
 	URL                   string
 	Namespace             string
 	URLPlain              string
-	IsWindowsCluster      bool
 	IsPreBootstrap        bool
 	IsRKE                 bool
 	PrivateRegistryConfig string
@@ -74,7 +73,7 @@ func toFeatureString(features map[string]bool) string {
 	return buf.String()
 }
 
-func SystemTemplate(resp io.Writer, agentImage, authImage, namespace, token, url string, isWindowsCluster bool, isPreBootstrap bool,
+func SystemTemplate(resp io.Writer, agentImage, authImage, namespace, token, url string, isPreBootstrap bool,
 	cluster *apimgmtv3.Cluster, features map[string]bool, taints []corev1.Taint, secretLister v1.SecretLister) error {
 	var tolerations, agentEnvVars, agentAppendTolerations, agentAffinity, agentResourceRequirements string
 	d := sha256.Sum256([]byte(fmt.Sprintf("%s.%s.%s", url, token, namespace)))
@@ -155,7 +154,6 @@ func SystemTemplate(resp io.Writer, agentImage, authImage, namespace, token, url
 		URL:                   base64.StdEncoding.EncodeToString([]byte(url)),
 		Namespace:             base64.StdEncoding.EncodeToString([]byte(namespace)),
 		URLPlain:              url,
-		IsWindowsCluster:      isWindowsCluster,
 		IsPreBootstrap:        isPreBootstrap,
 		IsRKE:                 cluster != nil && cluster.Status.Driver == apimgmtv3.ClusterDriverRKE,
 		PrivateRegistryConfig: registryConfig,
@@ -185,10 +183,8 @@ func GetDesiredFeatures(cluster *apimgmtv3.Cluster) map[string]bool {
 func ForCluster(cluster *apimgmtv3.Cluster, token string, taints []corev1.Taint, secretLister v1.SecretLister) ([]byte, error) {
 	buf := &bytes.Buffer{}
 	err := SystemTemplate(buf, GetDesiredAgentImage(cluster),
-		GetDesiredAuthImage(cluster),
-		cluster.Name, token, settings.ServerURL.Get(),
-		cluster.Spec.WindowsPreferedCluster, capr.PreBootstrap(cluster),
-		cluster, GetDesiredFeatures(cluster), taints, secretLister)
+		GetDesiredAuthImage(cluster), cluster.Name, token, settings.ServerURL.Get(),
+		capr.PreBootstrap(cluster), cluster, GetDesiredFeatures(cluster), taints, secretLister)
 	return buf.Bytes(), err
 }
 
