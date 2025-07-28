@@ -2,6 +2,7 @@ package provisioningv2
 
 import (
 	"context"
+	"github.com/sirupsen/logrus"
 
 	"github.com/rancher/rancher/pkg/controllers/provisioningv2/cluster"
 	"github.com/rancher/rancher/pkg/controllers/provisioningv2/fleetcluster"
@@ -18,6 +19,9 @@ import (
 )
 
 func Register(ctx context.Context, clients *wrangler.Context, kubeconfigManager *kubeconfig.Manager) {
+	logrus.Info("[capi-back-populate] PROV V2 IS WAITING FOR CAPI")
+	clients.WaitForCAPIBackPopulate(ctx)
+	logrus.Info("[capi-back-populate] PROV V2 GOT CAPI")
 	cluster.Register(ctx, clients, kubeconfigManager)
 	if features.MCM.Enabled() {
 		secret.Register(ctx, clients)
@@ -35,4 +39,6 @@ func Register(ctx context.Context, clients *wrangler.Context, kubeconfigManager 
 	if features.Harvester.Enabled() {
 		harvestercleanup.Register(ctx, clients)
 	}
+
+	clients.SharedControllerFactory.Start(ctx, 50)
 }

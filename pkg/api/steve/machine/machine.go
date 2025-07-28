@@ -1,6 +1,7 @@
 package machine
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/rancher/apiserver/pkg/types"
@@ -8,9 +9,13 @@ import (
 	"github.com/rancher/rancher/pkg/wrangler"
 	schema2 "github.com/rancher/steve/pkg/schema"
 	steve "github.com/rancher/steve/pkg/server"
+	"github.com/sirupsen/logrus"
 )
 
-func Register(server *steve.Server, clients *wrangler.Context) {
+func Register(ctx context.Context, server *steve.Server, clients *wrangler.Context) {
+	logrus.Info("[capi-back-populate] ssh IS WAITING FOR CAPI")
+	clients.WaitForCAPIBackPopulate(ctx)
+	logrus.Info("[capi-back-populate] SSH GOT CAPI")
 	sshClient := &sshClient{
 		machines: clients.CAPI.Machine(),
 		secrets:  clients.Core.Secret(),

@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"context"
+	"github.com/sirupsen/logrus"
 
 	"github.com/rancher/rancher/pkg/controllers/capr"
 	"github.com/rancher/rancher/pkg/controllers/dashboard/apiservice"
@@ -65,11 +66,13 @@ func Register(ctx context.Context, wrangler *wrangler.Context, embedded bool, re
 	if features.ProvisioningV2.Enabled() {
 		kubeconfigManager := kubeconfig.New(wrangler)
 		clusterindex.Register(ctx, wrangler)
-		provisioningv2.Register(ctx, wrangler, kubeconfigManager)
+		go provisioningv2.Register(ctx, wrangler, kubeconfigManager)
 		if features.RKE2.Enabled() {
-			if err := capr.Register(ctx, wrangler, kubeconfigManager); err != nil {
-				return err
-			}
+			go func() {
+				if err := capr.Register(ctx, wrangler, kubeconfigManager); err != nil {
+					logrus.Fatal(err)
+				}
+			}()
 		}
 	}
 

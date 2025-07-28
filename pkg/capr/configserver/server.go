@@ -1,6 +1,7 @@
 package configserver
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
@@ -73,22 +74,41 @@ func New(clients *wrangler.Context) *RKE2ConfigServer {
 			return []string{obj.Status.Token}, nil
 		})
 
-	return &RKE2ConfigServer{
-		serviceAccountsCache:     clients.Core.ServiceAccount().Cache(),
-		serviceAccounts:          clients.Core.ServiceAccount(),
-		secretsCache:             clients.Core.Secret().Cache(),
-		secrets:                  clients.Core.Secret(),
-		clusterTokenCache:        clients.Mgmt.ClusterRegistrationToken().Cache(),
-		clusterTokens:            clients.Mgmt.ClusterRegistrationToken(),
-		machineCache:             clients.CAPI.Machine().Cache(),
-		machines:                 clients.CAPI.Machine(),
+	srvr := &RKE2ConfigServer{
+		serviceAccountsCache: clients.Core.ServiceAccount().Cache(),
+		serviceAccounts:      clients.Core.ServiceAccount(),
+		secretsCache:         clients.Core.Secret().Cache(),
+		secrets:              clients.Core.Secret(),
+		clusterTokenCache:    clients.Mgmt.ClusterRegistrationToken().Cache(),
+		clusterTokens:        clients.Mgmt.ClusterRegistrationToken(),
+		//machineCache:             clients.CAPI.Machine().Cache(),
+		//machines:                 clients.CAPI.Machine(),
 		bootstrapCache:           clients.RKE.RKEBootstrap().Cache(),
 		provisioningClusterCache: clients.Provisioning.Cluster().Cache(),
 		k8s:                      clients.K8s,
 	}
+
+	go srvr.waitForCapiInit(context.Background(), clients)
+
+	return srvr
+}
+
+func (r *RKE2ConfigServer) waitForCapiInit(ctx context.Context, w *wrangler.Context) {
+	logrus.Info("[capi-back-populate] config server is waiting for CAPI back populate")
+	w.WaitForCAPIBackPopulate(ctx)
+	logrus.Infof("[capi-back-populate] config service received CAPI backpopulate, creating caches and clients")
+	r.machineCache = w.CAPI.Machine().Cache()
+	r.machines = w.CAPI.Machine()
 }
 
 func (r *RKE2ConfigServer) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
+	if r.machineCache == nil || r.machines == nil {
+		logrus.Debugf("[rke2configserver] CAPI not ready yet")
+		rw.WriteHeader(http.StatusServiceUnavailable)
+		rw.Header().Set("Retry-After", "5")
+		return
+	}
+
 	if !r.secrets.Informer().HasSynced() || !r.clusterTokens.Informer().HasSynced() {
 		if err := r.secrets.Informer().GetIndexer().Resync(); err != nil {
 			logrus.Errorf("error re-syncing secrets informer in rke2configserver: %v", err)

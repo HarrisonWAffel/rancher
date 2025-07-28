@@ -6,11 +6,10 @@ package wrangler
 import (
 	"context"
 	"fmt"
-	"github.com/rancher/rancher/pkg/generated/controllers/scc.cattle.io"
-	sccv1 "github.com/rancher/rancher/pkg/generated/controllers/scc.cattle.io/v1"
 	"net"
 	"net/http"
 	"sync"
+	"time"
 
 	fleetv1alpha1api "github.com/rancher/fleet/pkg/apis/fleet.cattle.io/v1alpha1"
 	"github.com/rancher/lasso/pkg/controller"
@@ -42,6 +41,8 @@ import (
 	provisioningv1 "github.com/rancher/rancher/pkg/generated/controllers/provisioning.cattle.io/v1"
 	"github.com/rancher/rancher/pkg/generated/controllers/rke.cattle.io"
 	rkecontrollers "github.com/rancher/rancher/pkg/generated/controllers/rke.cattle.io/v1"
+	"github.com/rancher/rancher/pkg/generated/controllers/scc.cattle.io"
+	sccv1 "github.com/rancher/rancher/pkg/generated/controllers/scc.cattle.io/v1"
 	"github.com/rancher/rancher/pkg/generated/controllers/upgrade.cattle.io"
 	plancontrolers "github.com/rancher/rancher/pkg/generated/controllers/upgrade.cattle.io/v1"
 	"github.com/rancher/rancher/pkg/peermanager"
@@ -70,6 +71,7 @@ import (
 	"github.com/rancher/wrangler/v3/pkg/schemes"
 	"github.com/sirupsen/logrus"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -247,7 +249,6 @@ func (w *Context) WithAgent(userAgent string) *Context {
 		wContextCopy.Apply = applyWithAgent
 	}
 	wContextCopy.Dynamic = dynamic.New(wContextCopy.K8s.Discovery())
-	wContextCopy.CAPI = wContextCopy.capi.WithAgent(userAgent).V1beta1()
 	wContextCopy.RKE = wContextCopy.rke.WithAgent(userAgent).V1()
 	wContextCopy.Mgmt = wContextCopy.mgmt.WithAgent(userAgent).V3()
 	wContextCopy.Apps = wContextCopy.apps.WithAgent(userAgent).V1()
@@ -267,11 +268,131 @@ func (w *Context) WithAgent(userAgent string) *Context {
 	return &wContextCopy
 }
 
+func (w *Context) CreateCAPIAgent(userAgent string) {
+	logrus.Infof("[capi-back-populate] wContextCpy waiting to create capi client with agent")
+	w.CAPI = w.capi.WithAgent(userAgent).V1beta1()
+	logrus.Infof("[capi-back-populate] wContextCpy created capi client with agent")
+}
+
 func enableProtobuf(cfg *rest.Config) *rest.Config {
 	cpy := rest.CopyConfig(cfg)
 	cpy.AcceptContentTypes = "application/vnd.kubernetes.protobuf, application/json"
 	cpy.ContentType = "application/json"
 	return cpy
+}
+
+func (w *Context) BackPopulateCAPI(ctx context.Context) {
+	logrus.Infof("[capi-back-populate] Waiting on CAPI CRDs to be back populated...")
+	if !w.WaitForCAPICRDs(ctx) {
+		logrus.Fatalf("CAPI CRDs were not created in time")
+	}
+
+	if w.capi != nil {
+		logrus.Infof("[capi-back-populate] capi factory was not nil")
+		return
+	}
+
+	logrus.Infof("[capi-back-populate] CAPI CRDs are confirmed, creating factory")
+	opts := &generic.FactoryOptions{
+		SharedControllerFactory: w.SharedControllerFactory,
+	}
+
+	capiFactory, err := capi.NewFactoryFromConfigWithOptions(w.RESTConfig, opts)
+	if err != nil {
+		logrus.Fatal(err)
+	}
+
+	w.capi = capiFactory
+	w.CAPI = capiFactory.Cluster().V1beta1()
+	logrus.Infof("[capi-back-populate] Starting capi shared factory")
+	err = w.capi.Start(ctx, 50)
+	if err != nil {
+		logrus.Fatal(err)
+	}
+
+	logrus.Infof("[capi-back-populate] Started capi!")
+}
+
+func (w *Context) WaitForCAPIBackPopulate(ctx context.Context) bool {
+	if w.capi != nil && w.CAPI != nil {
+		logrus.Infof("[capi-back-populate] CAPI has succesfully been back populated")
+		return true
+	}
+	ticker := time.NewTicker(3 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			logrus.Debug("Context cancelled while waiting for CAPI CRDs")
+			return false
+		case <-ticker.C:
+			if w.capi != nil && w.CAPI != nil {
+				logrus.Infof("[capi-back-populate] CAPI has succesfully been back populated")
+				return true
+			}
+		}
+	}
+}
+
+// WaitForCAPICRDs waits for all essential CAPI CRDs to be available and established.
+// This is done via the turtles chart now, so it will only happen after the
+// shared factory has been started for the first time, and when the chart installs the stuff
+func (w *Context) WaitForCAPICRDs(ctx context.Context) bool {
+	requiredCRDs := []string{
+		"clusters.cluster.x-k8s.io",
+		"machines.cluster.x-k8s.io",
+		"machinesets.cluster.x-k8s.io",
+		"machinedeployments.cluster.x-k8s.io",
+		"machinehealthchecks.cluster.x-k8s.io",
+	}
+
+	logrus.Info("Starting to wait for CAPI CRDs to be available and established")
+	ticker := time.NewTicker(3 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			logrus.Debug("Context cancelled while waiting for CAPI CRDs")
+			return false
+		case <-ticker.C:
+			logrus.Info("Checking CAPI CRDs availability and establishment status")
+			allCRDsReady := true
+			for _, crdName := range requiredCRDs {
+				crd, err := w.CRD.CustomResourceDefinition().Get(crdName, metav1.GetOptions{})
+				if err != nil {
+					if errors.IsNotFound(err) {
+						logrus.Infof("CRD %s not found, continuing to wait", crdName)
+						allCRDsReady = false
+						continue
+					}
+					logrus.Warnf("Error checking for CAPI CRD %s: %v", crdName, err)
+					allCRDsReady = false
+					break
+				}
+
+				established := false
+				for _, condition := range crd.Status.Conditions {
+					if condition.Type == "Established" && condition.Status == "True" {
+						established = true
+						break
+					}
+				}
+
+				if !established {
+					logrus.Infof("CRD %s exists but is not yet established, continuing to wait", crdName)
+					allCRDsReady = false
+					break
+				}
+
+				logrus.Infof("CRD %s is available and established", crdName)
+			}
+			if allCRDsReady {
+				logrus.Info("All CAPI CRDs are now available and established")
+				return true
+			}
+		}
+	}
 }
 
 func NewContext(ctx context.Context, clientConfig clientcmd.ClientConfig, restConfig *rest.Config) (*Context, error) {
@@ -325,10 +446,10 @@ func NewContext(ctx context.Context, clientConfig clientcmd.ClientConfig, restCo
 		return nil, err
 	}
 
-	capi, err := capi.NewFactoryFromConfigWithOptions(restConfig, opts)
-	if err != nil {
-		return nil, err
-	}
+	//capi, err := capi.NewFactoryFromConfigWithOptions(restConfig, opts)
+	//if err != nil {
+	//	return nil, err
+	//}
 
 	rke, err := rke.NewFactoryFromConfigWithOptions(restConfig, opts)
 	if err != nil {
@@ -435,38 +556,38 @@ func NewContext(ctx context.Context, clientConfig clientcmd.ClientConfig, restCo
 		Apply:                   apply,
 		SharedControllerFactory: controllerFactory,
 		Dynamic:                 dynamic.New(k8s.Discovery()),
-		CAPI:                    capi.Cluster().V1beta1(),
-		RKE:                     rke.Rke().V1(),
-		Mgmt:                    mgmt.Management().V3(),
-		Apps:                    apps.Apps().V1(),
-		Admission:               adminReg.Admissionregistration().V1(),
-		Project:                 project.Project().V3(),
-		Fleet:                   fleet.Fleet().V1alpha1(),
-		Provisioning:            provisioning.Provisioning().V1(),
-		Catalog:                 helm.Catalog().V1(),
-		Batch:                   batch.Batch().V1(),
-		RBAC:                    rbac.Rbac().V1(),
-		Core:                    core.Core().V1(),
-		API:                     api.Apiregistration().V1(),
-		CRD:                     crd.Apiextensions().V1(),
-		K8s:                     k8s,
-		ControllerFactory:       controllerFactory,
-		ASL:                     asl,
-		ClientConfig:            clientConfig,
-		MultiClusterManager:     noopMCM{},
-		CachedDiscovery:         cache,
-		RESTMapper:              restMapper,
-		leadership:              leadership,
-		controllerLock:          &sync.Mutex{},
-		PeerManager:             peerManager,
-		RESTClientGetter:        restClientGetter,
-		CatalogContentManager:   content,
-		HelmOperations:          helmop,
-		SystemChartsManager:     systemCharts,
-		TunnelAuthorizer:        tunnelAuth,
-		TunnelServer:            tunnelServer,
-		Plan:                    plan.Upgrade().V1(),
-		SCC:                     scc.Scc().V1(),
+		//CAPI:                    capi.Cluster().V1beta1(),
+		RKE:                   rke.Rke().V1(),
+		Mgmt:                  mgmt.Management().V3(),
+		Apps:                  apps.Apps().V1(),
+		Admission:             adminReg.Admissionregistration().V1(),
+		Project:               project.Project().V3(),
+		Fleet:                 fleet.Fleet().V1alpha1(),
+		Provisioning:          provisioning.Provisioning().V1(),
+		Catalog:               helm.Catalog().V1(),
+		Batch:                 batch.Batch().V1(),
+		RBAC:                  rbac.Rbac().V1(),
+		Core:                  core.Core().V1(),
+		API:                   api.Apiregistration().V1(),
+		CRD:                   crd.Apiextensions().V1(),
+		K8s:                   k8s,
+		ControllerFactory:     controllerFactory,
+		ASL:                   asl,
+		ClientConfig:          clientConfig,
+		MultiClusterManager:   noopMCM{},
+		CachedDiscovery:       cache,
+		RESTMapper:            restMapper,
+		leadership:            leadership,
+		controllerLock:        &sync.Mutex{},
+		PeerManager:           peerManager,
+		RESTClientGetter:      restClientGetter,
+		CatalogContentManager: content,
+		HelmOperations:        helmop,
+		SystemChartsManager:   systemCharts,
+		TunnelAuthorizer:      tunnelAuth,
+		TunnelServer:          tunnelServer,
+		Plan:                  plan.Upgrade().V1(),
+		SCC:                   scc.Scc().V1(),
 
 		mgmt:         mgmt,
 		apps:         apps,
@@ -479,11 +600,11 @@ func NewContext(ctx context.Context, clientConfig clientcmd.ClientConfig, restCo
 		core:         core,
 		api:          api,
 		crd:          crd,
-		capi:         capi,
-		rke:          rke,
-		rbac:         rbac,
-		plan:         plan,
-		sccReg:       scc,
+		//capi:         capi,
+		rke:    rke,
+		rbac:   rbac,
+		plan:   plan,
+		sccReg: scc,
 	}
 
 	return wContext, nil

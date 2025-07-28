@@ -2,6 +2,7 @@ package capr
 
 import (
 	"context"
+	"github.com/sirupsen/logrus"
 
 	"github.com/rancher/rancher/pkg/capr"
 	"github.com/rancher/rancher/pkg/capr/planner"
@@ -26,6 +27,9 @@ import (
 )
 
 func Register(ctx context.Context, clients *wrangler.Context, kubeconfigManager *kubeconfig.Manager) error {
+	logrus.Info("[capi-back-populate] CAPR IS WAITING FOR CAPI BACK POPULATE")
+	clients.WaitForCAPIBackPopulate(ctx)
+
 	rkePlanner := planner.New(ctx, clients, planner.InfoFunctions{
 		ImageResolver:           image.ResolveWithControlPlane,
 		ReleaseData:             capr.GetKDMReleaseData,
@@ -49,5 +53,7 @@ func Register(ctx context.Context, clients *wrangler.Context, kubeconfigManager 
 	managesystemagent.Register(ctx, clients)
 	machinedrain.Register(ctx, clients)
 
+	logrus.Infof("[capi-back-populate] CAPR HAS REGISTERED")
+	clients.SharedControllerFactory.Start(ctx, 50)
 	return nil
 }

@@ -81,6 +81,11 @@ type nodeDrain struct {
 type canChangeValuePolicy func(key string) bool
 
 func Register(ctx context.Context, cluster *config.UserContext, kubeConfigGetter common.KubeConfigGetter) {
+
+	logrus.Info("[capi-back-populate] managementuser IS WAITING FOR CAPI BACK POPULATE")
+	cluster.Management.Wrangler.WaitForCAPIBackPopulate(ctx)
+	logrus.Info("[capi-back-populate] managementuser IS DONE WAITING FOR CAPI BACK POPULATE")
+
 	m := &nodesSyncer{
 		clusterNamespace:     cluster.ClusterName,
 		machines:             cluster.Management.Management.Nodes(cluster.ClusterName),
