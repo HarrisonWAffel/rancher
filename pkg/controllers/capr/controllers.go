@@ -25,16 +25,16 @@ import (
 	"github.com/rancher/rancher/pkg/wrangler"
 )
 
-func Register(ctx context.Context, clients *wrangler.Context, kubeconfigManager *kubeconfig.Manager) error {
+func Register(ctx context.Context, clients *wrangler.CAPIContext, kubeconfigManager *kubeconfig.Manager) error {
 	rkePlanner := planner.New(ctx, clients, planner.InfoFunctions{
 		ImageResolver:           image.ResolveWithControlPlane,
 		ReleaseData:             capr.GetKDMReleaseData,
 		SystemAgentImage:        settings.SystemAgentInstallerImage.Get,
-		SystemPodLabelSelectors: systeminfo.NewRetriever(clients).GetSystemPodLabelSelectors,
-		GetBootstrapManifests:   prebootstrap.NewRetriever(clients).GeneratePreBootstrapClusterAgentManifest,
+		SystemPodLabelSelectors: systeminfo.NewRetriever(clients.Context).GetSystemPodLabelSelectors,
+		GetBootstrapManifests:   prebootstrap.NewRetriever(clients.Context).GeneratePreBootstrapClusterAgentManifest,
 	})
 	if features.MCM.Enabled() {
-		if err := dynamicschema.Register(ctx, clients); err != nil {
+		if err := dynamicschema.Register(ctx, clients.Context); err != nil {
 			return err
 		}
 		machineprovision.Register(ctx, clients, kubeconfigManager)

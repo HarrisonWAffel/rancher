@@ -6,13 +6,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/rancher/wrangler/v3/pkg/condition"
-
 	rkev1 "github.com/rancher/rancher/pkg/apis/rke.cattle.io/v1"
 	"github.com/rancher/rancher/pkg/capr"
 	caprplanner "github.com/rancher/rancher/pkg/capr/planner"
 	v1 "github.com/rancher/rancher/pkg/generated/controllers/rke.cattle.io/v1"
 	"github.com/rancher/rancher/pkg/wrangler"
+	"github.com/rancher/wrangler/v3/pkg/condition"
 	"github.com/rancher/wrangler/v3/pkg/generic"
 	"github.com/rancher/wrangler/v3/pkg/relatedresource"
 	"github.com/sirupsen/logrus"
@@ -33,7 +32,7 @@ type handler struct {
 	controlPlanes v1.RKEControlPlaneController
 }
 
-func Register(ctx context.Context, clients *wrangler.Context, planner *caprplanner.Planner) {
+func Register(ctx context.Context, clients *wrangler.CAPIContext, planner *caprplanner.Planner) {
 	h := handler{
 		planner:       planner,
 		controlPlanes: clients.RKE.RKEControlPlane(),

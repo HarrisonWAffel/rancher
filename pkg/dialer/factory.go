@@ -64,7 +64,7 @@ func (f *Factory) ClusterDialHolder(clusterName string, retryOnError bool) (*tra
 		return cached, nil
 	}
 
-	// Lock for writing
+	// Mutex for writing
 	f.dialHoldersLock.Lock()
 	defer f.dialHoldersLock.Unlock()
 

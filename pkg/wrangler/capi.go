@@ -6,6 +6,7 @@ import (
 	"time"
 
 	capi "github.com/rancher/rancher/pkg/generated/controllers/cluster.x-k8s.io"
+	capicontrollers "github.com/rancher/rancher/pkg/generated/controllers/cluster.x-k8s.io/v1beta1"
 	"github.com/rancher/wrangler/v3/pkg/generic"
 	"github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -20,7 +21,7 @@ func (w *Context) ManageDeferredCAPIContext(ctx context.Context) {
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 
-	logrus.Debugf("[deferred-capi] Starting to monitor CAPI CRD availability")
+	logrus.Debug("[deferred-capi] Starting to monitor CAPI CRD availability")
 
 	if w.DeferredCAPIRegistration.CAPIInitialized() {
 		return
@@ -89,24 +90,32 @@ func (w *Context) checkCAPICRDs() bool {
 
 func (w *Context) createCAPIFactoryAndStart(ctx context.Context) {
 	opts := &generic.FactoryOptions{
-		SharedControllerFactory: w.ControllerFactory,
+		SharedControllerFactory: w.SharedControllerFactory,
 	}
+
+	defer func() {
+		// don't panic in the event that rancher dies before
+		// the factory caches can sync
+		if r := recover(); r != nil {
+			logrus.Errorf("Encountered error while starting capi factory")
+		}
+	}()
 
 	capi, err := capi.NewFactoryFromConfigWithOptions(w.RESTConfig, opts)
 	if err != nil {
-		logrus.Fatalf("Encountered unexpected panic while creating capi factory: %v", err)
+		logrus.Fatalf("[deferred-capi] failed to instantiate new CAPI factory: %v", err)
 	}
 
-	w.capi = capi
-	w.CAPI = w.capi.Cluster().V1beta1()
+	w.DeferredCAPIRegistration.capi = capi
+	w.DeferredCAPIRegistration.capiClients = w.DeferredCAPIRegistration.capi.Cluster().V1beta1()
 
 	err = w.DeferredCAPIRegistration.invokePools(ctx, w)
 	if err != nil {
-		logrus.Fatalf("Encountered unexpected error while invoking deferred pools: %v", err)
+		logrus.Fatalf("[deferred-capi] failed to invoked deferred CAPI registration pools: %v", err)
 	}
 
 	if err := w.SharedControllerFactory.Start(ctx, defaultControllerWorkerCount); err != nil {
-		logrus.Fatalf("Encountered unexpected error while starting capi factory: %v", err)
+		logrus.Fatalf("[deferred-capi] failed to start shared controller factory after instantitation of CAPI factory: %v", err)
 	}
 
 	w.DeferredCAPIRegistration.mutex.Lock()
@@ -121,8 +130,11 @@ type DeferredCAPIRegistration struct {
 	wg    *sync.WaitGroup
 	mutex sync.Mutex
 
-	registrationFuncs []func(ctx context.Context, clients *Context) error
-	funcs             []func(clients *Context)
+	capiClients capicontrollers.Interface
+	capi        *capi.Factory
+
+	registrationFuncs []func(ctx context.Context, clients *CAPIContext) error
+	funcs             []func(clients *CAPIContext)
 }
 
 func (d *DeferredCAPIRegistration) CAPIInitialized() bool {
@@ -131,55 +143,70 @@ func (d *DeferredCAPIRegistration) CAPIInitialized() bool {
 	return d.CAPIInitComplete
 }
 
+func (d *DeferredCAPIRegistration) Copy() *DeferredCAPIRegistration {
+	d.mutex.Lock()
+	defer d.mutex.Unlock()
+	return &DeferredCAPIRegistration{
+		CAPIInitComplete:  d.CAPIInitComplete,
+		userAgent:         d.userAgent,
+		wg:                &sync.WaitGroup{},
+		capiClients:       d.capiClients,
+		capi:              d.capi,
+		registrationFuncs: d.registrationFuncs,
+		funcs:             d.funcs,
+	}
+}
+
 func (d *DeferredCAPIRegistration) invokePools(ctx context.Context, clients *Context) error {
 	d.mutex.Lock()
 	defer d.mutex.Unlock()
 
-	logrus.Debugf("[deferred-capi - invokePools] Executing deferred registration function pool")
 	if err := clients.StartSharedFactoryWithTransaction(ctx, func(ctx context.Context) error {
 		return d.invokeRegistrationFuncs(ctx, clients, d.registrationFuncs)
 	}); err != nil {
 		return err
 	}
-	logrus.Debugf("[deferred-capi - invokePools] deferred registration functions have completed")
 
-	logrus.Debugf("[deferred-capi - invokePools] Executing deferred function pool")
 	for _, f := range d.funcs {
-		f(clients)
+		f(&CAPIContext{
+			Context: clients,
+			CAPI:    d.capiClients,
+			capi:    d.capi,
+		})
 		d.wg.Done()
 	}
-	logrus.Debugf("[deferred-capi - invokePools] deferred functions have completed")
 
-	d.registrationFuncs = []func(ctx context.Context, clients *Context) error{}
-	d.funcs = []func(clients *Context){}
+	d.registrationFuncs = []func(ctx context.Context, clients *CAPIContext) error{}
+	d.funcs = []func(clients *CAPIContext){}
 
 	return nil
 }
 
-func (d *DeferredCAPIRegistration) DeferFunc(clients *Context, f func(clients *Context)) {
+func (d *DeferredCAPIRegistration) DeferFunc(clients *Context, f func(clients *CAPIContext)) {
 	if d.CAPIInitialized() {
-		logrus.Debugf("[deferred-capi - DeferRegistration] Executing deferred function as CAPI is initilized")
-		defer func() {
-			logrus.Debugf("[deferred-capi - DeferRegistration] deferred function has completed")
-		}()
-		f(clients)
+		f(&CAPIContext{
+			Context: clients,
+			CAPI:    d.capiClients,
+			capi:    d.capi,
+		})
 		return
 	}
+
 	d.mutex.Lock()
-	defer d.mutex.Unlock()
 	d.wg.Add(1)
 	d.funcs = append(d.funcs, f)
+	d.mutex.Unlock()
 }
 
-func (d *DeferredCAPIRegistration) DeferFuncWithError(clients *Context, f func(wrangler *Context) error) chan error {
+func (d *DeferredCAPIRegistration) DeferFuncWithError(clients *Context, f func(wrangler *CAPIContext) error) chan error {
 	errChan := make(chan error, 1)
 	go func(errs chan error) {
 		d.wg.Wait()
-		logrus.Debugf("[deferred-capi - DeferRegistration] Executing deferred function with error as CAPI is initilized")
-		defer func() {
-			logrus.Debugf("[deferred-capi - DeferRegistration] deferred function with error has completed")
-		}()
-		err := f(clients)
+		err := f(&CAPIContext{
+			Context: clients,
+			CAPI:    d.capiClients,
+			capi:    d.capi,
+		})
 		defer close(errChan)
 
 		if err != nil {
@@ -189,18 +216,13 @@ func (d *DeferredCAPIRegistration) DeferFuncWithError(clients *Context, f func(w
 	return errChan
 }
 
-func (d *DeferredCAPIRegistration) DeferRegistration(ctx context.Context, clients *Context, register func(ctx context.Context, clients *Context) error) error {
+func (d *DeferredCAPIRegistration) DeferRegistration(ctx context.Context, clients *Context, register func(ctx context.Context, clients *CAPIContext) error) error {
 	d.wg.Add(1)
-	if d.CAPIInitialized() {
-		logrus.Debugf("[deferred-capi - DeferRegistration] Executing deferred registration function as CAPI is initilized")
-		defer func() {
-			logrus.Debugf("[deferred-capi - DeferRegistration] deferred registration function has completed")
-		}()
-
+	if d.CAPIInitComplete {
 		d.mutex.Lock()
 		defer d.mutex.Unlock()
 		return clients.StartSharedFactoryWithTransaction(ctx, func(ctx context.Context) error {
-			if err := d.invokeRegistrationFuncs(ctx, clients, []func(ctx context.Context, clients *Context) error{register}); err != nil {
+			if err := d.invokeRegistrationFuncs(ctx, clients, []func(ctx context.Context, clients *CAPIContext) error{register}); err != nil {
 				return err
 			}
 			return nil
@@ -213,9 +235,13 @@ func (d *DeferredCAPIRegistration) DeferRegistration(ctx context.Context, client
 	return nil
 }
 
-func (d *DeferredCAPIRegistration) invokeRegistrationFuncs(transaction context.Context, clients *Context, f []func(ctx context.Context, clients *Context) error) error {
+func (d *DeferredCAPIRegistration) invokeRegistrationFuncs(transaction context.Context, clients *Context, f []func(ctx context.Context, clients *CAPIContext) error) error {
 	for _, register := range f {
-		if err := register(transaction, clients); err != nil {
+		if err := register(transaction, &CAPIContext{
+			Context: clients,
+			CAPI:    d.capiClients,
+			capi:    d.capi,
+		}); err != nil {
 			return err
 		}
 		d.wg.Done()

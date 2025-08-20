@@ -22,6 +22,7 @@ import (
 	provisioningcontrollers "github.com/rancher/rancher/pkg/generated/controllers/provisioning.cattle.io/v1"
 	rkev1controllers "github.com/rancher/rancher/pkg/generated/controllers/rke.cattle.io/v1"
 	"github.com/rancher/rancher/pkg/types/config"
+	"github.com/rancher/rancher/pkg/wrangler"
 	"github.com/rancher/wrangler/v3/pkg/name"
 	"github.com/sirupsen/logrus"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -60,15 +61,15 @@ type handler struct {
 
 // Register sets up the v2provisioning snapshot backpopulate controller. This controller is responsible for monitoring
 // the downstream etcd-snapshots configmap and backpopulating snapshots into etcd snapshot objects in the management cluster.
-func Register(ctx context.Context, userContext *config.UserContext) {
+func Register(ctx context.Context, userContext *config.UserContext, capiCtx *wrangler.CAPIContext) {
 	h := handler{
 		clusterName:                userContext.ClusterName,
 		clusterCache:               userContext.Management.Wrangler.Provisioning.Cluster().Cache(),
 		controlPlaneCache:          userContext.Management.Wrangler.RKE.RKEControlPlane().Cache(),
 		etcdSnapshotCache:          userContext.Management.Wrangler.RKE.ETCDSnapshot().Cache(),
 		etcdSnapshotController:     userContext.Management.Wrangler.RKE.ETCDSnapshot(),
-		machineCache:               userContext.Management.Wrangler.CAPI.Machine().Cache(),
-		capiClusterCache:           userContext.Management.Wrangler.CAPI.Cluster().Cache(),
+		machineCache:               capiCtx.CAPI.Machine().Cache(),
+		capiClusterCache:           capiCtx.CAPI.Cluster().Cache(),
 		etcdSnapshotFileController: userContext.K3s.V1().ETCDSnapshotFile(),
 		etcdSnapshotFileCache:      userContext.K3s.V1().ETCDSnapshotFile().Cache(),
 	}

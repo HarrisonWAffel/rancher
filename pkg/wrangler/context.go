@@ -113,6 +113,14 @@ func init() {
 	utilruntime.Must(schemes.AddToScheme(Scheme))
 }
 
+// CAPIContext is a wrapper around the larger Wrangler context
+// which exposes the CAPI Clients.
+type CAPIContext struct {
+	*Context
+	CAPI capicontrollers.Interface
+	capi *capi.Factory
+}
+
 type Context struct {
 	RESTConfig *rest.Config
 
@@ -120,7 +128,6 @@ type Context struct {
 
 	Apply               apply.Apply
 	Dynamic             *dynamic.Controller
-	CAPI                capicontrollers.Interface
 	RKE                 rkecontrollers.Interface
 	Mgmt                managementv3.Interface
 	Apps                appsv1.Interface
@@ -162,7 +169,6 @@ type Context struct {
 	ctlg         *catalog.Factory
 	adminReg     *admissionreg.Factory
 	apps         *apps.Factory
-	capi         *capi.Factory
 	rke          *rke.Factory
 	fleet        *fleet.Factory
 	provisioning *provisioning.Factory
@@ -218,15 +224,15 @@ func (w *Context) StartSharedFactoryWithTransaction(ctx context.Context, f func(
 	}
 
 	ctx = metrics.WithContextID(ctx, "wranglercontext")
-	if err := w.ControllerFactory.SharedCacheFactory().Start(ctx); err != nil {
+	if err := w.SharedControllerFactory.SharedCacheFactory().Start(ctx); err != nil {
 		transaction.Rollback()
 		return err
 	}
 
-	w.ControllerFactory.SharedCacheFactory().WaitForCacheSync(ctx)
+	w.SharedControllerFactory.SharedCacheFactory().WaitForCacheSync(ctx)
 	transaction.Commit()
 
-	if err := w.ControllerFactory.Start(ctx, defaultControllerWorkerCount); err != nil {
+	if err := w.SharedControllerFactory.Start(ctx, defaultControllerWorkerCount); err != nil {
 		return err
 	}
 
@@ -291,14 +297,10 @@ func (w *Context) WithAgent(userAgent string) *Context {
 	wContextCopy.API = wContextCopy.api.WithAgent(userAgent).V1()
 	wContextCopy.CRD = wContextCopy.crd.WithAgent(userAgent).V1()
 	wContextCopy.Plan = wContextCopy.plan.WithAgent(userAgent).V1()
-
-	if w.DeferredCAPIRegistration.CAPIInitialized() {
-		wContextCopy.CAPI = wContextCopy.capi.WithAgent(userAgent).V1beta1()
-	} else {
-		wContextCopy.DeferredCAPIRegistration.DeferFunc(&wContextCopy, func(clients *Context) {
-			clients.CAPI = clients.capi.WithAgent(userAgent).V1beta1()
-		})
-	}
+	wContextCopy.DeferredCAPIRegistration = wContextCopy.DeferredCAPIRegistration.Copy()
+	wContextCopy.DeferredCAPIRegistration.DeferFunc(&wContextCopy, func(clients *CAPIContext) {
+		clients.CAPI = clients.capi.WithAgent(userAgent).V1beta1()
+	})
 
 	return &wContextCopy
 }
@@ -515,7 +517,8 @@ func NewContext(ctx context.Context, clientConfig clientcmd.ClientConfig, restCo
 		telemetry:    telemetry,
 
 		DeferredCAPIRegistration: &DeferredCAPIRegistration{
-			wg: &sync.WaitGroup{},
+			wg:               &sync.WaitGroup{},
+			CAPIInitComplete: false,
 		},
 	}
 

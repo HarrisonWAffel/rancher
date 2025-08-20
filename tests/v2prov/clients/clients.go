@@ -2,9 +2,13 @@ package clients
 
 import (
 	"context"
+	"fmt"
 	"time"
 
+	capi "github.com/rancher/rancher/pkg/generated/controllers/cluster.x-k8s.io"
+	capicontrollers "github.com/rancher/rancher/pkg/generated/controllers/cluster.x-k8s.io/v1beta1"
 	"github.com/rancher/rancher/pkg/wrangler"
+	"github.com/rancher/wrangler/v3/pkg/generic"
 	"github.com/rancher/wrangler/v3/pkg/kubeconfig"
 	"github.com/rancher/wrangler/v3/pkg/ratelimit"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -15,6 +19,9 @@ import (
 type Clients struct {
 	*wrangler.Context
 	Dynamic dynamic.Interface
+
+	CAPI capicontrollers.Interface
+	capi *capi.Factory
 
 	// Ctx is canceled when the Close() is called
 	Ctx     context.Context
@@ -70,6 +77,14 @@ func NewForConfig(ctx context.Context, config clientcmd.ClientConfig) (*Clients,
 		return nil, err
 	}
 
+	capi, err := capi.NewFactoryFromConfigWithOptions(rest, &generic.FactoryOptions{
+		SharedControllerFactory: wranglerCtx.SharedControllerFactory,
+	})
+	if err != nil {
+		cancel()
+		return nil, fmt.Errorf("[deferred-capi] failed to instantiate new CAPI factory: %v", err)
+	}
+
 	dynamic, err := dynamic.NewForConfig(rest)
 	if err != nil {
 		cancel()
@@ -79,6 +94,8 @@ func NewForConfig(ctx context.Context, config clientcmd.ClientConfig) (*Clients,
 	return &Clients{
 		Context: wranglerCtx,
 		Dynamic: dynamic,
+		capi:    capi,
+		CAPI:    capi.Cluster().V1beta1(),
 		Ctx:     ctx,
 		cancel:  cancel,
 	}, nil
