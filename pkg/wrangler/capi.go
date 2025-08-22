@@ -22,12 +22,6 @@ func (w *Context) ManageDeferredCAPIContext(ctx context.Context) {
 
 	logrus.Infof("[deferred-capi - ManageDeferredCAPIContext] Starting to monitor CAPI CRD availability")
 
-	w.DeferredCAPIRegistration.mutex.Lock()
-	if w.DeferredCAPIRegistration.CAPIInitComplete {
-		return
-	}
-	w.DeferredCAPIRegistration.mutex.Unlock()
-
 	for {
 		allCRDsReady := w.checkCAPICRDs()
 		if allCRDsReady {
@@ -96,7 +90,7 @@ func (w *Context) initializeCAPIFactory(ctx context.Context) {
 
 	capi, err := capi.NewFactoryFromConfigWithOptions(w.RESTConfig, opts)
 	if err != nil {
-		logrus.Fatalf("Encountered unexpected panic while creating capi factory: %v", err)
+		logrus.Fatalf("Encountered unexpected error while creating capi factory: %v", err)
 	}
 
 	w.DeferredCAPIRegistration.mutex.Lock()
@@ -237,22 +231,27 @@ func (d *DeferredCAPIRegistration) DeferRegistration(ctx context.Context, client
 			logrus.Debugf("[deferred-capi - DeferRegistration] deferred registration function has completed")
 		}()
 
-		clients.controllerLock.Lock()
-		wranglerStarted := clients.started
-		if !wranglerStarted {
-			logrus.Debugf("[deferred-capi - DeferRegistration] wrangler context has not yet started, will not start controller factory")
-			if err := d.invokeRegistrationFuncs(ctx, clients, []func(ctx context.Context, clients *Context) error{register}); err != nil {
+		invoke := func() (bool, error) {
+			clients.controllerLock.Lock()
+			defer clients.controllerLock.Unlock()
+			wranglerStarted := clients.started
+			if !wranglerStarted {
+				logrus.Debugf("[deferred-capi - DeferRegistration] wrangler context has not yet started, will not start controller factory after registration")
+				return true, d.invokeRegistrationFuncs(ctx, clients, []func(ctx context.Context, clients *Context) error{register})
+			}
+			return false, nil
+		}
+
+		invoked, err := invoke()
+		if invoked {
+			if err != nil {
 				return err
 			}
 			return nil
 		}
-		clients.controllerLock.Unlock()
 
 		return clients.StartFactoryWithTransaction(ctx, func(ctx context.Context) error {
-			if err := d.invokeRegistrationFuncs(ctx, clients, []func(ctx context.Context, clients *Context) error{register}); err != nil {
-				return err
-			}
-			return nil
+			return d.invokeRegistrationFuncs(ctx, clients, []func(ctx context.Context, clients *Context) error{register})
 		})
 	}
 
