@@ -337,11 +337,6 @@ func NewContext(ctx context.Context, clientConfig clientcmd.ClientConfig, restCo
 		return nil, err
 	}
 
-	ctlg, err := catalog.NewFactoryFromConfigWithOptions(restConfig, opts)
-	if err != nil {
-		return nil, err
-	}
-
 	apps, err := apps.NewFactoryFromConfigWithOptions(restConfig, opts)
 	if err != nil {
 		return nil, err
@@ -419,6 +414,48 @@ func NewContext(ctx context.Context, clientConfig clientcmd.ClientConfig, restCo
 		return nil, err
 	}
 
+	wContext := &Context{
+		RESTConfig:              restConfig,
+		Apply:                   apply,
+		SharedControllerFactory: controllerFactory,
+		Dynamic:                 dynamic.New(k8s.Discovery()),
+		ControllerFactory:       controllerFactory,
+		ASL:                     asl,
+		ClientConfig:            clientConfig,
+		MultiClusterManager:     noopMCM{},
+		controllerLock:          &sync.Mutex{},
+		CRD:                     crd.Apiextensions().V1(),
+
+		mgmt:         mgmt,
+		apps:         apps,
+		adminReg:     adminReg,
+		project:      project,
+		fleet:        fleet,
+		provisioning: provisioning,
+		batch:        batch,
+		core:         core,
+		api:          api,
+		crd:          crd,
+		rke:          rke,
+		rbac:         rbac,
+		plan:         plan,
+		telemetry:    telemetry,
+	}
+
+	if err := wContext.StartFactoryWithTransaction(ctx, func(ctx context.Context) error {
+		capiReg := RegisterCAPICRDTracker(ctx, wContext)
+		wContext.DeferredCAPIRegistration = capiReg
+		return nil
+	}); err != nil {
+		return nil, fmt.Errorf("register capi crd tracker: %w", err)
+	}
+
+	ctlg, err := catalog.NewFactoryFromConfigWithOptions(restConfig, opts)
+	if err != nil {
+		return nil, err
+	}
+	wContext.ctlg = helm
+
 	content := content.NewManager(
 		k8s.Discovery(),
 		core.Core().V1().ConfigMap().Cache(),
@@ -462,63 +499,31 @@ func NewContext(ctx context.Context, clientConfig clientcmd.ClientConfig, restCo
 		}
 		return nil
 	})
-	wContext := &Context{
-		RESTConfig:              restConfig,
-		Apply:                   apply,
-		SharedControllerFactory: controllerFactory,
-		Dynamic:                 dynamic.New(k8s.Discovery()),
-		RKE:                     rke.Rke().V1(),
-		Mgmt:                    mgmt.Management().V3(),
-		Apps:                    apps.Apps().V1(),
-		Admission:               adminReg.Admissionregistration().V1(),
-		Project:                 project.Project().V3(),
-		Fleet:                   fleet.Fleet().V1alpha1(),
-		Provisioning:            provisioning.Provisioning().V1(),
-		Catalog:                 helm.Catalog().V1(),
-		Batch:                   batch.Batch().V1(),
-		RBAC:                    rbac.Rbac().V1(),
-		Core:                    core.Core().V1(),
-		API:                     api.Apiregistration().V1(),
-		CRD:                     crd.Apiextensions().V1(),
-		K8s:                     k8s,
-		ControllerFactory:       controllerFactory,
-		ASL:                     asl,
-		ClientConfig:            clientConfig,
-		MultiClusterManager:     noopMCM{},
-		CachedDiscovery:         cache,
-		RESTMapper:              restMapper,
-		leadership:              leadership,
-		controllerLock:          &sync.Mutex{},
-		PeerManager:             peerManager,
-		RESTClientGetter:        restClientGetter,
-		CatalogContentManager:   content,
-		HelmOperations:          helmop,
-		SystemChartsManager:     systemCharts,
-		TunnelAuthorizer:        tunnelAuth,
-		TunnelServer:            tunnelServer,
-		Plan:                    plan.Upgrade().V1(),
-		Telemetry:               telemetry.Telemetry().V1(),
-
-		mgmt:         mgmt,
-		apps:         apps,
-		adminReg:     adminReg,
-		project:      project,
-		fleet:        fleet,
-		provisioning: provisioning,
-		ctlg:         helm,
-		batch:        batch,
-		core:         core,
-		api:          api,
-		crd:          crd,
-		rke:          rke,
-		rbac:         rbac,
-		plan:         plan,
-		telemetry:    telemetry,
-
-		DeferredCAPIRegistration: &DeferredCAPIRegistration{
-			wg: &sync.WaitGroup{},
-		},
-	}
+	wContext.RKE = rke.Rke().V1()
+	wContext.Mgmt = mgmt.Management().V3()
+	wContext.Apps = apps.Apps().V1()
+	wContext.Admission = adminReg.Admissionregistration().V1()
+	wContext.Project = project.Project().V3()
+	wContext.Fleet = fleet.Fleet().V1alpha1()
+	wContext.Provisioning = provisioning.Provisioning().V1()
+	wContext.Catalog = helm.Catalog().V1()
+	wContext.Batch = batch.Batch().V1()
+	wContext.RBAC = rbac.Rbac().V1()
+	wContext.Core = core.Core().V1()
+	wContext.API = api.Apiregistration().V1()
+	wContext.K8s = k8s
+	wContext.Plan = plan.Upgrade().V1()
+	wContext.Telemetry = telemetry.Telemetry().V1()
+	wContext.CachedDiscovery = cache
+	wContext.RESTMapper = restMapper
+	wContext.leadership = leadership
+	wContext.PeerManager = peerManager
+	wContext.RESTClientGetter = restClientGetter
+	wContext.CatalogContentManager = content
+	wContext.HelmOperations = helmop
+	wContext.SystemChartsManager = systemCharts
+	wContext.TunnelAuthorizer = tunnelAuth
+	wContext.TunnelServer = tunnelServer
 
 	return wContext, nil
 }

@@ -151,10 +151,6 @@ func New(ctx context.Context, clientConfg clientcmd.ClientConfig, opts *Options)
 		return nil, err
 	}
 
-	// back-fill the context with the CAPI factory when the relevant
-	// CRDs are available
-	go wranglerContext.ManageDeferredCAPIContext(ctx)
-
 	// Check for deprecated RKE1 resources in the cluster
 	if err := validateRKE1Resources(wranglerContext); err != nil {
 		return nil, fmt.Errorf("rke1 pre-upgrade validation failed: %w", err)
