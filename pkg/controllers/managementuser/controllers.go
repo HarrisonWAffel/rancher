@@ -34,20 +34,19 @@ func Register(ctx context.Context, mgmt *config.ScaledContext, cluster *config.U
 	healthsyncer.Register(ctx, cluster)
 	networkpolicy.Register(ctx, cluster)
 
-	if err := mgmt.Wrangler.DeferredCAPIRegistration.DeferRegistration(ctx, mgmt.Wrangler, func(ctx context.Context, _ *wrangler.Context) error {
+	mgmt.Wrangler.DeferredCAPIRegistration.DeferFunc(mgmt.Wrangler, func(_ *wrangler.Context) {
 		nodesyncer.Register(ctx, cluster, kubeConfigGetter)
-		return nil
-	}); err != nil {
-		return err
-	}
+	})
 
 	secret.Register(ctx, mgmt, cluster, clusterRec)
 	resourcequota.Register(ctx, cluster)
 	windows.Register(ctx, clusterRec, cluster)
 	nsserviceaccount.Register(ctx, cluster)
 
-	if err := mgmt.Wrangler.DeferredCAPIRegistration.DeferRegistration(ctx, mgmt.Wrangler, func(ctx context.Context, _ *wrangler.Context) error {
-		if features.RKE2.Enabled() {
+	if features.RKE2.Enabled() {
+		// we utilize DeferFunc here as we are not registering anything against the larger wrangler context, only the user context.
+		// The user context is started later. If RKE2 is enabled, we know that CAPI CRDs will be created, and likely already exist at this point.
+		mgmt.Wrangler.DeferredCAPIRegistration.DeferFunc(mgmt.Wrangler, func(_ *wrangler.Context) {
 			// Just register the snapshot controller if the cluster is administrated by rancher.
 			if clusterRec.Annotations["provisioning.cattle.io/administrated"] == "true" {
 				if features.Provisioningv2ETCDSnapshotBackPopulation.Enabled() {
@@ -62,11 +61,8 @@ func Register(ctx context.Context, mgmt *config.ScaledContext, cluster *config.U
 					cluster.Plan.V1().Plan(),
 					cluster.Management.Wrangler.RKE.RKEControlPlane())
 			}
-			machinerole.Register(ctx, cluster)
-		}
-		return nil
-	}); err != nil {
-		return err
+		})
+		machinerole.Register(ctx, cluster)
 	}
 
 	registerImpersonationCaches(cluster)
