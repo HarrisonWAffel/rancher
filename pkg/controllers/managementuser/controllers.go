@@ -34,8 +34,8 @@ func Register(ctx context.Context, mgmt *config.ScaledContext, cluster *config.U
 	healthsyncer.Register(ctx, cluster)
 	networkpolicy.Register(ctx, cluster)
 
-	if err := mgmt.Wrangler.DeferredCAPIRegistration.DeferRegistration(ctx, mgmt.Wrangler, func(ctx context.Context, _ *wrangler.Context) error {
-		nodesyncer.Register(ctx, cluster, kubeConfigGetter)
+	if err := mgmt.Wrangler.DeferredCAPIRegistration.DeferRegistration(ctx, mgmt.Wrangler, func(ctx context.Context, capi *wrangler.CAPIContext) error {
+		nodesyncer.Register(ctx, cluster, capi, kubeConfigGetter)
 		return nil
 	}); err != nil {
 		return err
@@ -46,13 +46,13 @@ func Register(ctx context.Context, mgmt *config.ScaledContext, cluster *config.U
 	windows.Register(ctx, clusterRec, cluster)
 	nsserviceaccount.Register(ctx, cluster)
 
-	if err := mgmt.Wrangler.DeferredCAPIRegistration.DeferRegistration(ctx, mgmt.Wrangler, func(ctx context.Context, _ *wrangler.Context) error {
+	if err := mgmt.Wrangler.DeferredCAPIRegistration.DeferRegistration(ctx, mgmt.Wrangler, func(ctx context.Context, capi *wrangler.CAPIContext) error {
 		if features.RKE2.Enabled() {
 			// Just register the snapshot controller if the cluster is administrated by rancher.
 			if clusterRec.Annotations["provisioning.cattle.io/administrated"] == "true" {
 				if features.Provisioningv2ETCDSnapshotBackPopulation.Enabled() {
 					cluster.K3s = k3s.New(cluster.ControllerFactory)
-					snapshotbackpopulate.Register(ctx, cluster)
+					snapshotbackpopulate.Register(ctx, cluster, capi)
 				}
 				cluster.Plan = upgrade.New(cluster.ControllerFactory)
 				rkecontrolplanecondition.Register(ctx,

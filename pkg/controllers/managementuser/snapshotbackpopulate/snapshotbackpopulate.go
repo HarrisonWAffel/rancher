@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/rancher/rancher/pkg/wrangler"
 	"reflect"
 	"regexp"
 	"strings"
@@ -60,15 +61,15 @@ type handler struct {
 
 // Register sets up the v2provisioning snapshot backpopulate controller. This controller is responsible for monitoring
 // the downstream etcd-snapshots configmap and backpopulating snapshots into etcd snapshot objects in the management cluster.
-func Register(ctx context.Context, userContext *config.UserContext) {
+func Register(ctx context.Context, userContext *config.UserContext, capi *wrangler.CAPIContext) {
 	h := handler{
 		clusterName:                userContext.ClusterName,
 		clusterCache:               userContext.Management.Wrangler.Provisioning.Cluster().Cache(),
 		controlPlaneCache:          userContext.Management.Wrangler.RKE.RKEControlPlane().Cache(),
 		etcdSnapshotCache:          userContext.Management.Wrangler.RKE.ETCDSnapshot().Cache(),
 		etcdSnapshotController:     userContext.Management.Wrangler.RKE.ETCDSnapshot(),
-		machineCache:               userContext.Management.Wrangler.CAPI.Machine().Cache(),
-		capiClusterCache:           userContext.Management.Wrangler.CAPI.Cluster().Cache(),
+		machineCache:               capi.CAPI.Machine().Cache(),
+		capiClusterCache:           capi.CAPI.Cluster().Cache(),
 		etcdSnapshotFileController: userContext.K3s.V1().ETCDSnapshotFile(),
 		etcdSnapshotFileCache:      userContext.K3s.V1().ETCDSnapshotFile().Cache(),
 	}

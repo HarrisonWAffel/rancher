@@ -153,7 +153,7 @@ func New(ctx context.Context, clientConfg clientcmd.ClientConfig, opts *Options)
 
 	// back-fill the context with the CAPI factory when the relevant
 	// CRDs are available
-	go wranglerContext.ManageDeferredCAPIContext(ctx)
+	go wranglerContext.DeferredCAPIRegistration.ManageDeferredFunctions(ctx, wranglerContext)
 
 	// Check for deprecated RKE1 resources in the cluster
 	if err := validateRKE1Resources(wranglerContext); err != nil {
@@ -456,7 +456,7 @@ func (r *Rancher) Start(ctx context.Context) error {
 	})
 
 	r.Wrangler.OnLeader(func(ctx context.Context) error {
-		errChan := r.Wrangler.DeferredCAPIRegistration.DeferFuncWithError(r.Wrangler, runRKE2Migrations)
+		errChan := r.Wrangler.DeferredCAPIRegistration.DeferFuncWithError(runRKE2Migrations)
 		select {
 		case err, ok := <-errChan:
 			if !ok {

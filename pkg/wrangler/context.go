@@ -28,8 +28,6 @@ import (
 	"github.com/rancher/rancher/pkg/controllers"
 	"github.com/rancher/rancher/pkg/generated/controllers/catalog.cattle.io"
 	catalogcontrollers "github.com/rancher/rancher/pkg/generated/controllers/catalog.cattle.io/v1"
-	capi "github.com/rancher/rancher/pkg/generated/controllers/cluster.x-k8s.io"
-	capicontrollers "github.com/rancher/rancher/pkg/generated/controllers/cluster.x-k8s.io/v1beta1"
 	"github.com/rancher/rancher/pkg/generated/controllers/fleet.cattle.io"
 	fleetv1alpha1 "github.com/rancher/rancher/pkg/generated/controllers/fleet.cattle.io/v1alpha1"
 	"github.com/rancher/rancher/pkg/generated/controllers/management.cattle.io"
@@ -116,11 +114,10 @@ func init() {
 type Context struct {
 	RESTConfig *rest.Config
 
-	DeferredCAPIRegistration *DeferredCAPIRegistration
+	DeferredCAPIRegistration *Deferred[*CAPIContext, *DeferredCAPIInitializer]
 
 	Apply               apply.Apply
 	Dynamic             *dynamic.Controller
-	CAPI                capicontrollers.Interface
 	RKE                 rkecontrollers.Interface
 	Mgmt                managementv3.Interface
 	Apps                appsv1.Interface
@@ -162,7 +159,6 @@ type Context struct {
 	ctlg         *catalog.Factory
 	adminReg     *admissionreg.Factory
 	apps         *apps.Factory
-	capi         *capi.Factory
 	rke          *rke.Factory
 	fleet        *fleet.Factory
 	provisioning *provisioning.Factory
@@ -254,7 +250,7 @@ func (w *Context) Start(ctx context.Context) error {
 }
 
 // WithAgent returns a shallow copy of the Context that has been configured to use a user agent in its
-// clients that is the given userAgent appended to "rancher-%s-%s".
+// clientContext that is the given userAgent appended to "rancher-%s-%s".
 func (w *Context) WithAgent(userAgent string) *Context {
 	userAgent = fmt.Sprintf("rancher-%s-%s", settings.ServerVersion.Get(), userAgent)
 	wContextCopy := *w
@@ -292,14 +288,6 @@ func (w *Context) WithAgent(userAgent string) *Context {
 	wContextCopy.API = wContextCopy.api.WithAgent(userAgent).V1()
 	wContextCopy.CRD = wContextCopy.crd.WithAgent(userAgent).V1()
 	wContextCopy.Plan = wContextCopy.plan.WithAgent(userAgent).V1()
-
-	if w.DeferredCAPIRegistration.CAPIInitialized() {
-		wContextCopy.CAPI = wContextCopy.capi.WithAgent(userAgent).V1beta1()
-	} else {
-		wContextCopy.DeferredCAPIRegistration.DeferFunc(&wContextCopy, func(clients *Context) {
-			wContextCopy.CAPI = wContextCopy.capi.WithAgent(userAgent).V1beta1()
-		})
-	}
 
 	return &wContextCopy
 }
@@ -514,9 +502,19 @@ func NewContext(ctx context.Context, clientConfig clientcmd.ClientConfig, restCo
 		rbac:         rbac,
 		plan:         plan,
 		telemetry:    telemetry,
+	}
 
-		DeferredCAPIRegistration: &DeferredCAPIRegistration{
-			wg: &sync.WaitGroup{},
+	wContext.DeferredCAPIRegistration = &Deferred[*CAPIContext, *DeferredCAPIInitializer]{
+		Name: "capi",
+		InitClientContext: &DeferredCAPIInitializer{
+			Context: wContext,
+			RequiredCRDS: []string{
+				"clusters.cluster.x-k8s.io",
+				"machines.cluster.x-k8s.io",
+				"machinesets.cluster.x-k8s.io",
+				"machinedeployments.cluster.x-k8s.io",
+				"machinehealthchecks.cluster.x-k8s.io",
+			},
 		},
 	}
 
