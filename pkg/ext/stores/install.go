@@ -2,6 +2,7 @@ package stores
 
 import (
 	"fmt"
+	"github.com/rancher/rancher/pkg/ext/stores/meta/gcp"
 
 	extv1 "github.com/rancher/rancher/pkg/apis/ext.cattle.io/v1"
 	"github.com/rancher/rancher/pkg/auth/providers/common"
@@ -84,6 +85,12 @@ func InstallStores(
 	if err != nil {
 		return fmt.Errorf("unable to install %s store: %w", selfuser.SingularName, err)
 	}
-
+	err = server.Install(
+		extv1.GCPMetaRequestResourceName,
+		gcp.GVK,
+		gcp.New(wranglerContext, server.GetAuthorizer()))
+	if err != nil {
+		return fmt.Errorf("unable to install %s store: %w", gcp.SingularName, err)
+	}
 	return nil
 }

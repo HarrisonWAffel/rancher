@@ -31,6 +31,7 @@ func init() {
 }
 
 type Interface interface {
+	GCPMetaRequest() GCPMetaRequestController
 	GroupMembershipRefreshRequest() GroupMembershipRefreshRequestController
 	Kubeconfig() KubeconfigController
 	PasswordChangeRequest() PasswordChangeRequestController
@@ -47,6 +48,10 @@ func New(controllerFactory controller.SharedControllerFactory) Interface {
 
 type version struct {
 	controllerFactory controller.SharedControllerFactory
+}
+
+func (v *version) GCPMetaRequest() GCPMetaRequestController {
+	return generic.NewController[*v1.GCPMetaRequest, *v1.GCPMetaRequestList](schema.GroupVersionKind{Group: "ext.cattle.io", Version: "v1", Kind: "GCPMetaRequest"}, "gcpmetarequests", true, v.controllerFactory)
 }
 
 func (v *version) GroupMembershipRefreshRequest() GroupMembershipRefreshRequestController {

@@ -29,6 +29,10 @@ import (
 
 func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenAPIDefinition {
 	return map[string]common.OpenAPIDefinition{
+		"github.com/rancher/rancher/pkg/apis/ext.cattle.io/v1.GCPMetaRequest":                      schema_pkg_apis_extcattleio_v1_GCPMetaRequest(ref),
+		"github.com/rancher/rancher/pkg/apis/ext.cattle.io/v1.GCPMetaRequestList":                  schema_pkg_apis_extcattleio_v1_GCPMetaRequestList(ref),
+		"github.com/rancher/rancher/pkg/apis/ext.cattle.io/v1.GCPMetaSpec":                         schema_pkg_apis_extcattleio_v1_GCPMetaSpec(ref),
+		"github.com/rancher/rancher/pkg/apis/ext.cattle.io/v1.GCPMetaStatus":                       schema_pkg_apis_extcattleio_v1_GCPMetaStatus(ref),
 		"github.com/rancher/rancher/pkg/apis/ext.cattle.io/v1.GroupMembershipRefreshRequest":       schema_pkg_apis_extcattleio_v1_GroupMembershipRefreshRequest(ref),
 		"github.com/rancher/rancher/pkg/apis/ext.cattle.io/v1.GroupMembershipRefreshRequestList":   schema_pkg_apis_extcattleio_v1_GroupMembershipRefreshRequestList(ref),
 		"github.com/rancher/rancher/pkg/apis/ext.cattle.io/v1.GroupMembershipRefreshRequestSpec":   schema_pkg_apis_extcattleio_v1_GroupMembershipRefreshRequestSpec(ref),
@@ -37,6 +41,9 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		"github.com/rancher/rancher/pkg/apis/ext.cattle.io/v1.KubeconfigList":                      schema_pkg_apis_extcattleio_v1_KubeconfigList(ref),
 		"github.com/rancher/rancher/pkg/apis/ext.cattle.io/v1.KubeconfigSpec":                      schema_pkg_apis_extcattleio_v1_KubeconfigSpec(ref),
 		"github.com/rancher/rancher/pkg/apis/ext.cattle.io/v1.KubeconfigStatus":                    schema_pkg_apis_extcattleio_v1_KubeconfigStatus(ref),
+		"github.com/rancher/rancher/pkg/apis/ext.cattle.io/v1.ListFamiliesFromProject":             schema_pkg_apis_extcattleio_v1_ListFamiliesFromProject(ref),
+		"github.com/rancher/rancher/pkg/apis/ext.cattle.io/v1.ListImageFamilyForProject":           schema_pkg_apis_extcattleio_v1_ListImageFamilyForProject(ref),
+		"github.com/rancher/rancher/pkg/apis/ext.cattle.io/v1.MetaRequestResponse":                 schema_pkg_apis_extcattleio_v1_MetaRequestResponse(ref),
 		"github.com/rancher/rancher/pkg/apis/ext.cattle.io/v1.PasswordChangeRequest":               schema_pkg_apis_extcattleio_v1_PasswordChangeRequest(ref),
 		"github.com/rancher/rancher/pkg/apis/ext.cattle.io/v1.PasswordChangeRequestList":           schema_pkg_apis_extcattleio_v1_PasswordChangeRequestList(ref),
 		"github.com/rancher/rancher/pkg/apis/ext.cattle.io/v1.PasswordChangeRequestSpec":           schema_pkg_apis_extcattleio_v1_PasswordChangeRequestSpec(ref),
@@ -110,6 +117,300 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		"k8s.io/apimachinery/pkg/runtime.TypeMeta":                                                 schema_k8sio_apimachinery_pkg_runtime_TypeMeta(ref),
 		"k8s.io/apimachinery/pkg/runtime.Unknown":                                                  schema_k8sio_apimachinery_pkg_runtime_Unknown(ref),
 		"k8s.io/apimachinery/pkg/version.Info":                                                     schema_k8sio_apimachinery_pkg_version_Info(ref),
+	}
+}
+
+func schema_pkg_apis_extcattleio_v1_GCPMetaRequest(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Type: []string{"object"},
+				Properties: map[string]spec.Schema{
+					"kind": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"apiVersion": {
+						SchemaProps: spec.SchemaProps{
+							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"metadata": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Standard object metadata; More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata.",
+							Default:     map[string]interface{}{},
+							Ref:         ref("k8s.io/apimachinery/pkg/apis/meta/v1.ObjectMeta"),
+						},
+					},
+					"spec": {
+						SchemaProps: spec.SchemaProps{
+							Default: map[string]interface{}{},
+							Ref:     ref("github.com/rancher/rancher/pkg/apis/ext.cattle.io/v1.GCPMetaSpec"),
+						},
+					},
+					"status": {
+						SchemaProps: spec.SchemaProps{
+							Default: map[string]interface{}{},
+							Ref:     ref("github.com/rancher/rancher/pkg/apis/ext.cattle.io/v1.GCPMetaStatus"),
+						},
+					},
+				},
+			},
+		},
+		Dependencies: []string{
+			"github.com/rancher/rancher/pkg/apis/ext.cattle.io/v1.GCPMetaSpec", "github.com/rancher/rancher/pkg/apis/ext.cattle.io/v1.GCPMetaStatus", "k8s.io/apimachinery/pkg/apis/meta/v1.ObjectMeta"},
+	}
+}
+
+func schema_pkg_apis_extcattleio_v1_GCPMetaRequestList(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "GCPMetaRequestList is a list of GCPMetaRequest resources",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"kind": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"apiVersion": {
+						SchemaProps: spec.SchemaProps{
+							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"metadata": {
+						SchemaProps: spec.SchemaProps{
+							Default: map[string]interface{}{},
+							Ref:     ref("k8s.io/apimachinery/pkg/apis/meta/v1.ListMeta"),
+						},
+					},
+					"items": {
+						SchemaProps: spec.SchemaProps{
+							Type: []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Default: map[string]interface{}{},
+										Ref:     ref("github.com/rancher/rancher/pkg/apis/ext.cattle.io/v1.GCPMetaRequest"),
+									},
+								},
+							},
+						},
+					},
+				},
+				Required: []string{"metadata", "items"},
+			},
+		},
+		Dependencies: []string{
+			"github.com/rancher/rancher/pkg/apis/ext.cattle.io/v1.GCPMetaRequest", "k8s.io/apimachinery/pkg/apis/meta/v1.ListMeta"},
+	}
+}
+
+func schema_pkg_apis_extcattleio_v1_GCPMetaSpec(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Type: []string{"object"},
+				Properties: map[string]spec.Schema{
+					"cloudCredentialID": {
+						SchemaProps: spec.SchemaProps{
+							Default: "",
+							Type:    []string{"string"},
+							Format:  "",
+						},
+					},
+					"project": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"string"},
+							Format: "",
+						},
+					},
+					"zone": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"string"},
+							Format: "",
+						},
+					},
+					"region": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"string"},
+							Format: "",
+						},
+					},
+					"listMachineTypes": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"boolean"},
+							Format: "",
+						},
+					},
+					"listNetworks": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"boolean"},
+							Format: "",
+						},
+					},
+					"listSubnetworks": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"boolean"},
+							Format: "",
+						},
+					},
+					"listServiceAccounts": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"boolean"},
+							Format: "",
+						},
+					},
+					"listVersions": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"boolean"},
+							Format: "",
+						},
+					},
+					"listZones": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"boolean"},
+							Format: "",
+						},
+					},
+					"listClusters": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"boolean"},
+							Format: "",
+						},
+					},
+					"listSharedSubnets": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"boolean"},
+							Format: "",
+						},
+					},
+					"listDiskTypes": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"boolean"},
+							Format: "",
+						},
+					},
+					"listFamiliesFromProject": {
+						SchemaProps: spec.SchemaProps{
+							Ref: ref("github.com/rancher/rancher/pkg/apis/ext.cattle.io/v1.ListFamiliesFromProject"),
+						},
+					},
+					"listImageFamilyForProject": {
+						SchemaProps: spec.SchemaProps{
+							Ref: ref("github.com/rancher/rancher/pkg/apis/ext.cattle.io/v1.ListImageFamilyForProject"),
+						},
+					},
+				},
+				Required: []string{"cloudCredentialID"},
+			},
+		},
+		Dependencies: []string{
+			"github.com/rancher/rancher/pkg/apis/ext.cattle.io/v1.ListFamiliesFromProject", "github.com/rancher/rancher/pkg/apis/ext.cattle.io/v1.ListImageFamilyForProject"},
+	}
+}
+
+func schema_pkg_apis_extcattleio_v1_GCPMetaStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Type: []string{"object"},
+				Properties: map[string]spec.Schema{
+					"conditions": {
+						SchemaProps: spec.SchemaProps{
+							Type: []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Default: map[string]interface{}{},
+										Ref:     ref("k8s.io/apimachinery/pkg/apis/meta/v1.Condition"),
+									},
+								},
+							},
+						},
+					},
+					"machineTypesResponse": {
+						SchemaProps: spec.SchemaProps{
+							Default: map[string]interface{}{},
+							Ref:     ref("github.com/rancher/rancher/pkg/apis/ext.cattle.io/v1.MetaRequestResponse"),
+						},
+					},
+					"networksResponse": {
+						SchemaProps: spec.SchemaProps{
+							Default: map[string]interface{}{},
+							Ref:     ref("github.com/rancher/rancher/pkg/apis/ext.cattle.io/v1.MetaRequestResponse"),
+						},
+					},
+					"subnetworksResponse": {
+						SchemaProps: spec.SchemaProps{
+							Default: map[string]interface{}{},
+							Ref:     ref("github.com/rancher/rancher/pkg/apis/ext.cattle.io/v1.MetaRequestResponse"),
+						},
+					},
+					"serviceAccountsResponse": {
+						SchemaProps: spec.SchemaProps{
+							Default: map[string]interface{}{},
+							Ref:     ref("github.com/rancher/rancher/pkg/apis/ext.cattle.io/v1.MetaRequestResponse"),
+						},
+					},
+					"versionsResponse": {
+						SchemaProps: spec.SchemaProps{
+							Default: map[string]interface{}{},
+							Ref:     ref("github.com/rancher/rancher/pkg/apis/ext.cattle.io/v1.MetaRequestResponse"),
+						},
+					},
+					"zonesResponse": {
+						SchemaProps: spec.SchemaProps{
+							Default: map[string]interface{}{},
+							Ref:     ref("github.com/rancher/rancher/pkg/apis/ext.cattle.io/v1.MetaRequestResponse"),
+						},
+					},
+					"clustersResponse": {
+						SchemaProps: spec.SchemaProps{
+							Default: map[string]interface{}{},
+							Ref:     ref("github.com/rancher/rancher/pkg/apis/ext.cattle.io/v1.MetaRequestResponse"),
+						},
+					},
+					"sharedSubnetsResponse": {
+						SchemaProps: spec.SchemaProps{
+							Default: map[string]interface{}{},
+							Ref:     ref("github.com/rancher/rancher/pkg/apis/ext.cattle.io/v1.MetaRequestResponse"),
+						},
+					},
+					"diskTypesResponse": {
+						SchemaProps: spec.SchemaProps{
+							Default: map[string]interface{}{},
+							Ref:     ref("github.com/rancher/rancher/pkg/apis/ext.cattle.io/v1.MetaRequestResponse"),
+						},
+					},
+					"familiesFromProjectResponse": {
+						SchemaProps: spec.SchemaProps{
+							Default: map[string]interface{}{},
+							Ref:     ref("github.com/rancher/rancher/pkg/apis/ext.cattle.io/v1.MetaRequestResponse"),
+						},
+					},
+					"imageFamilyForProjectResponse": {
+						SchemaProps: spec.SchemaProps{
+							Default: map[string]interface{}{},
+							Ref:     ref("github.com/rancher/rancher/pkg/apis/ext.cattle.io/v1.MetaRequestResponse"),
+						},
+					},
+				},
+				Required: []string{"conditions"},
+			},
+		},
+		Dependencies: []string{
+			"github.com/rancher/rancher/pkg/apis/ext.cattle.io/v1.MetaRequestResponse", "k8s.io/apimachinery/pkg/apis/meta/v1.Condition"},
 	}
 }
 
@@ -487,6 +788,98 @@ func schema_pkg_apis_extcattleio_v1_KubeconfigStatus(ref common.ReferenceCallbac
 		},
 		Dependencies: []string{
 			"k8s.io/apimachinery/pkg/apis/meta/v1.Condition"},
+	}
+}
+
+func schema_pkg_apis_extcattleio_v1_ListFamiliesFromProject(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Type: []string{"object"},
+				Properties: map[string]spec.Schema{
+					"projects": {
+						SchemaProps: spec.SchemaProps{
+							Type: []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Default: "",
+										Type:    []string{"string"},
+										Format:  "",
+									},
+								},
+							},
+						},
+					},
+					"showDeprecated": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"boolean"},
+							Format: "",
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func schema_pkg_apis_extcattleio_v1_ListImageFamilyForProject(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Type: []string{"object"},
+				Properties: map[string]spec.Schema{
+					"imageProject": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"string"},
+							Format: "",
+						},
+					},
+					"imageFamilies": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"string"},
+							Format: "",
+						},
+					},
+					"showDeprecated": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"boolean"},
+							Format: "",
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func schema_pkg_apis_extcattleio_v1_MetaRequestResponse(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Type: []string{"object"},
+				Properties: map[string]spec.Schema{
+					"responseCode": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"integer"},
+							Format: "int32",
+						},
+					},
+					"responseValue": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"string"},
+							Format: "",
+						},
+					},
+					"error": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"string"},
+							Format: "",
+						},
+					},
+				},
+			},
+		},
 	}
 }
 

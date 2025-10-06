@@ -27,6 +27,23 @@ import (
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
+// GCPMetaRequestList is a list of GCPMetaRequest resources
+type GCPMetaRequestList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata"`
+
+	Items []GCPMetaRequest `json:"items"`
+}
+
+func NewGCPMetaRequest(namespace, name string, obj GCPMetaRequest) *GCPMetaRequest {
+	obj.APIVersion, obj.Kind = SchemeGroupVersion.WithKind("GCPMetaRequest").ToAPIVersionAndKind()
+	obj.Name = name
+	obj.Namespace = namespace
+	return &obj
+}
+
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
 // GroupMembershipRefreshRequestList is a list of GroupMembershipRefreshRequest resources
 type GroupMembershipRefreshRequestList struct {
 	metav1.TypeMeta `json:",inline"`
