@@ -67,7 +67,7 @@ func getContainerServiceClient(ctx context.Context, credentialContent string) (*
 	return service, nil
 }
 
-func listMachineTypes(ctx context.Context, cap *Capabilities) ([]byte, int, error) {
+func ListMachineTypes(ctx context.Context, cap *Capabilities) ([]byte, int, error) {
 	if cap.ProjectID == "" || cap.Zone == "" {
 		return nil, http.StatusBadRequest, fmt.Errorf("projectId and zone are required")
 	}
@@ -85,7 +85,7 @@ func listMachineTypes(ctx context.Context, cap *Capabilities) ([]byte, int, erro
 	return encodeOutput(result)
 }
 
-func listNetworks(ctx context.Context, cap *Capabilities) ([]byte, int, error) {
+func ListNetworks(ctx context.Context, cap *Capabilities) ([]byte, int, error) {
 	if cap.ProjectID == "" {
 		return nil, http.StatusBadRequest, fmt.Errorf("projectId is required")
 	}
@@ -103,7 +103,7 @@ func listNetworks(ctx context.Context, cap *Capabilities) ([]byte, int, error) {
 	return encodeOutput(result)
 }
 
-func listSubnetworks(ctx context.Context, cap *Capabilities) ([]byte, int, error) {
+func ListSubnetworks(ctx context.Context, cap *Capabilities) ([]byte, int, error) {
 	if cap.ProjectID == "" || cap.Region == "" {
 		return nil, http.StatusBadRequest, fmt.Errorf("projectId and region are required")
 	}
@@ -121,7 +121,7 @@ func listSubnetworks(ctx context.Context, cap *Capabilities) ([]byte, int, error
 	return encodeOutput(result)
 }
 
-func listServiceAccounts(ctx context.Context, cap *Capabilities) ([]byte, int, error) {
+func ListServiceAccounts(ctx context.Context, cap *Capabilities) ([]byte, int, error) {
 	if cap.ProjectID == "" {
 		return nil, http.StatusBadRequest, fmt.Errorf("projectId is required")
 	}
@@ -140,7 +140,7 @@ func listServiceAccounts(ctx context.Context, cap *Capabilities) ([]byte, int, e
 	return encodeOutput(result)
 }
 
-func listVersions(ctx context.Context, cap *Capabilities) ([]byte, int, error) {
+func ListVersions(ctx context.Context, cap *Capabilities) ([]byte, int, error) {
 	if cap.Region == "" && cap.Zone == "" {
 		return nil, http.StatusBadRequest, fmt.Errorf("either region or zone is required")
 	}
@@ -171,7 +171,7 @@ func listVersions(ctx context.Context, cap *Capabilities) ([]byte, int, error) {
 	return encodeOutput(result)
 }
 
-func listZones(ctx context.Context, cap *Capabilities) ([]byte, int, error) {
+func ListZones(ctx context.Context, cap *Capabilities) ([]byte, int, error) {
 	if cap.ProjectID == "" {
 		return nil, http.StatusBadRequest, fmt.Errorf("projectId is required")
 	}
@@ -189,7 +189,7 @@ func listZones(ctx context.Context, cap *Capabilities) ([]byte, int, error) {
 	return encodeOutput(result)
 }
 
-func listClusters(ctx context.Context, cap *Capabilities) ([]byte, int, error) {
+func ListClusters(ctx context.Context, cap *Capabilities) ([]byte, int, error) {
 	if cap.Region == "" && cap.Zone == "" {
 		return nil, http.StatusBadRequest, fmt.Errorf("either region or zone is required")
 	}
@@ -218,7 +218,7 @@ func listClusters(ctx context.Context, cap *Capabilities) ([]byte, int, error) {
 	return encodeOutput(result)
 }
 
-func listSharedSubnets(ctx context.Context, cap *Capabilities) ([]byte, int, error) {
+func ListSharedSubnets(ctx context.Context, cap *Capabilities) ([]byte, int, error) {
 	computeClient, err := getComputeServiceClient(ctx, cap.Credentials)
 	if err != nil {
 		return nil, http.StatusInternalServerError, err
@@ -249,8 +249,8 @@ func listSharedSubnets(ctx context.Context, cap *Capabilities) ([]byte, int, err
 	return encodeOutput(result)
 }
 
-// listDiskTypes lists the available disk types for a given GCP project and region.
-func listDiskTypes(ctx context.Context, cap *Capabilities) ([]byte, int, error) {
+// ListDiskTypes lists the available disk types for a given GCP project and region.
+func ListDiskTypes(ctx context.Context, cap *Capabilities) ([]byte, int, error) {
 	client, err := getComputeServiceClient(ctx, cap.Credentials)
 	if err != nil {
 		return nil, http.StatusInternalServerError, err
@@ -264,11 +264,11 @@ func listDiskTypes(ctx context.Context, cap *Capabilities) ([]byte, int, error) 
 	return encodeOutput(result)
 }
 
-// listFamiliesFromProject iterates over all images in one or more projects and extracts
+// ListFamiliesFromProject iterates over all images in one or more projects and extracts
 // unique families. Multiple projects can be passed in a comma-delimited format
 // (project1,project2). This is a workaround to a limitation within the GCP API,
 // which does not provide a single API call to achieve this.
-func listFamiliesFromProject(ctx context.Context, cap *Capabilities, projects string, showDeprecated bool) ([]byte, int, error) {
+func ListFamiliesFromProject(ctx context.Context, cap *Capabilities, projects string, showDeprecated bool) ([]byte, int, error) {
 	client, err := getComputeServiceClient(ctx, cap.Credentials)
 	if err != nil {
 		return nil, http.StatusInternalServerError, err
@@ -305,12 +305,12 @@ func listFamiliesFromProject(ctx context.Context, cap *Capabilities, projects st
 	return encodeOutput(families)
 }
 
-// listImageFamilyForProject retrieves the images included in a given
+// ListImageFamilyForProject retrieves the images included in a given
 // image family for the given project. Multiple families can be passed
 // in a comma-delimited format (family1,family2), however all families
 // must belong to the same project (i.e. you can't get SLES
 // families from the ubuntu-os-cloud project).
-func listImageFamilyForProject(ctx context.Context, cap *Capabilities, imageProject, imageFamilies string, showDeprecated bool) ([]byte, int, error) {
+func ListImageFamilyForProject(ctx context.Context, cap *Capabilities, imageProject, imageFamilies string, showDeprecated bool) ([]byte, int, error) {
 	client, err := getComputeServiceClient(ctx, cap.Credentials)
 	if err != nil {
 		return nil, http.StatusInternalServerError, err

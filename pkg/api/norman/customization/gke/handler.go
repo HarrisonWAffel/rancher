@@ -82,42 +82,42 @@ func (h *handler) ServeHTTP(writer http.ResponseWriter, req *http.Request) {
 
 	switch resourceType {
 	case "gkeMachineTypes":
-		if serialized, errCode, err = listMachineTypes(req.Context(), capa); err != nil {
+		if serialized, errCode, err = ListMachineTypes(req.Context(), capa); err != nil {
 			logrus.Errorf("[gke-handler] error getting machine types: %v", err)
 			handleErr(writer, errCode, err)
 			return
 		}
 		writer.Write(serialized)
 	case "gkeNetworks":
-		if serialized, errCode, err = listNetworks(req.Context(), capa); err != nil {
+		if serialized, errCode, err = ListNetworks(req.Context(), capa); err != nil {
 			logrus.Errorf("[gke-handler] error getting networks: %v", err)
 			handleErr(writer, errCode, err)
 			return
 		}
 		writer.Write(serialized)
 	case "gkeServiceAccounts":
-		if serialized, errCode, err = listServiceAccounts(req.Context(), capa); err != nil {
+		if serialized, errCode, err = ListServiceAccounts(req.Context(), capa); err != nil {
 			logrus.Errorf("[gke-handler] error getting serviceaccounts: %v", err)
 			handleErr(writer, errCode, err)
 			return
 		}
 		writer.Write(serialized)
 	case "gkeSubnetworks":
-		if serialized, errCode, err = listSubnetworks(req.Context(), capa); err != nil {
+		if serialized, errCode, err = ListSubnetworks(req.Context(), capa); err != nil {
 			logrus.Errorf("[gke-handler] error getting subnetworks: %v", err)
 			handleErr(writer, errCode, err)
 			return
 		}
 		writer.Write(serialized)
 	case "gkeVersions":
-		if serialized, errCode, err = listVersions(req.Context(), capa); err != nil {
+		if serialized, errCode, err = ListVersions(req.Context(), capa); err != nil {
 			logrus.Errorf("[gke-handler] error getting versions: %v", err)
 			handleErr(writer, errCode, err)
 			return
 		}
 		writer.Write(serialized)
 	case "gkeZones":
-		if serialized, errCode, err = listZones(req.Context(), capa); err != nil {
+		if serialized, errCode, err = ListZones(req.Context(), capa); err != nil {
 			logrus.Errorf("[gke-handler] error getting zones: %v", err)
 			handleErr(writer, errCode, err)
 			return
@@ -125,14 +125,14 @@ func (h *handler) ServeHTTP(writer http.ResponseWriter, req *http.Request) {
 		}
 		writer.Write(serialized)
 	case "gkeClusters":
-		if serialized, errCode, err = listClusters(req.Context(), capa); err != nil {
+		if serialized, errCode, err = ListClusters(req.Context(), capa); err != nil {
 			logrus.Errorf("[gke-handler] error getting clusters: %v", err)
 			handleErr(writer, errCode, err)
 			return
 		}
 		writer.Write(serialized)
 	case "gkeSharedSubnets":
-		if serialized, errCode, err = listSharedSubnets(req.Context(), capa); err != nil {
+		if serialized, errCode, err = ListSharedSubnets(req.Context(), capa); err != nil {
 			logrus.Errorf("[gke-handler] error getting shared subnets: %v", err)
 			handleErr(writer, errCode, err)
 			return
@@ -147,7 +147,7 @@ func (h *handler) ServeHTTP(writer http.ResponseWriter, req *http.Request) {
 
 		showDeprecated := strings.ToLower(req.URL.Query().Get("showDeprecated")) == "true"
 
-		if serialized, errCode, err = listFamiliesFromProject(req.Context(), capa, project, showDeprecated); err != nil {
+		if serialized, errCode, err = ListFamiliesFromProject(req.Context(), capa, project, showDeprecated); err != nil {
 			logrus.Errorf("[gke-handler] error getting families from project: %v", err)
 			handleErr(writer, errCode, err)
 			return
@@ -168,14 +168,14 @@ func (h *handler) ServeHTTP(writer http.ResponseWriter, req *http.Request) {
 
 		showDeprecated := strings.ToLower(req.URL.Query().Get("showDeprecated")) == "true"
 
-		if serialized, errCode, err = listImageFamilyForProject(req.Context(), capa, imageProject, imageFamily, showDeprecated); err != nil {
+		if serialized, errCode, err = ListImageFamilyForProject(req.Context(), capa, imageProject, imageFamily, showDeprecated); err != nil {
 			logrus.Errorf("[gke-handler] error getting images from image family: %v", err)
 			handleErr(writer, errCode, err)
 			return
 		}
 		writer.Write(serialized)
 	case "gkeDiskTypes":
-		if serialized, errCode, err = listDiskTypes(req.Context(), capa); err != nil {
+		if serialized, errCode, err = ListDiskTypes(req.Context(), capa); err != nil {
 			logrus.Errorf("[gke-handler] error getting disk types: %v", err)
 			handleErr(writer, errCode, err)
 			return
