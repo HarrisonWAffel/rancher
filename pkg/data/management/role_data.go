@@ -86,6 +86,7 @@ func addRoles(wrangler *wrangler.Context, management *config.ManagementContext) 
 		addRule().apiGroups("ext.cattle.io").resources("selfusers").verbs("create").
 		addRule().apiGroups("ext.cattle.io").resources("passwordchangerequests").verbs("create").
 		addRule().apiGroups("ext.cattle.io").resources("kubeconfigs").verbs("get", "list", "watch", "create", "delete", "deletecollection", "update", "patch").
+		addRule().apiGroups("ext.cattle.io").resources("proxywhitelistrequests").verbs("create", "get", "list").
 		// standard permissions for regular users, on their tokens
 		// Note: The ext token store applies additional restrictions. A user can see and manipulate only their own tokens.
 		addRule().apiGroups("ext.cattle.io").resources("tokens").verbs("get", "list", "watch", "create", "delete", "update", "patch").
@@ -396,7 +397,9 @@ func addUserRules(role *roleBuilder) *roleBuilder {
 		// Note: The ext token store applies additional restrictions. A user can see and manipulate only their own tokens.
 		addRule().apiGroups("ext.cattle.io").resources("tokens").verbs("get", "list", "watch", "create", "delete", "update", "patch").
 		addRule().apiGroups("ext.cattle.io").resources("selfusers").verbs("create").
+		addRule().apiGroups("ext.cattle.io").resources("proxywhitelistrequests").verbs("create", "get", "list").
 		addRule().apiGroups("ext.cattle.io").resources("passwordchangerequests").verbs("create").
+		addRule().apiGroups("ui.cattle.io").resources("metaproxies").verbs("create", "get", "list").
 		addRule().apiGroups("management.cattle.io").resources("principals", "roletemplates").verbs("get", "list", "watch").
 		addRule().apiGroups("management.cattle.io").resources("preferences").verbs("*").
 		addRule().apiGroups("management.cattle.io").resources("settings").verbs("get", "list", "watch").

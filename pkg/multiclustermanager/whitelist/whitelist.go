@@ -4,19 +4,20 @@ import (
 	"strings"
 	"sync"
 
+	v1 "github.com/rancher/rancher/pkg/apis/ui.cattle.io/v1"
 	"github.com/rancher/rancher/pkg/settings"
 )
 
 var (
 	Proxy = ProxyAcceptList{
 		RWMutex: sync.RWMutex{},
-		accept:  map[string]bool{},
+		accept:  map[string]struct{}{},
 	}
 )
 
 type ProxyAcceptList struct {
 	sync.RWMutex
-	accept map[string]bool
+	accept map[string]struct{}
 }
 
 func (p *ProxyAcceptList) Get() []string {
@@ -30,10 +31,23 @@ func (p *ProxyAcceptList) Get() []string {
 	return r
 }
 
+func (p *ProxyAcceptList) Contains(key string) bool {
+	p.Lock()
+	defer p.Unlock()
+	_, ok := p.accept[key]
+	return ok
+}
+
 func (p *ProxyAcceptList) Add(key string) {
 	p.Lock()
 	defer p.Unlock()
-	p.accept[key] = true
+	p.accept[key] = struct{}{}
+}
+
+func (p *ProxyAcceptList) Set(key string, proxy v1.ProxyEndpoint) {
+	p.Lock()
+	defer p.Unlock()
+	p.accept[key] = struct{}{}
 }
 
 func (p *ProxyAcceptList) Rm(key string) {

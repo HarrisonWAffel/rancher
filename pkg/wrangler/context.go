@@ -44,6 +44,8 @@ import (
 	rkecontrollers "github.com/rancher/rancher/pkg/generated/controllers/rke.cattle.io/v1"
 	"github.com/rancher/rancher/pkg/generated/controllers/telemetry.cattle.io"
 	telemetryv1 "github.com/rancher/rancher/pkg/generated/controllers/telemetry.cattle.io/v1"
+	"github.com/rancher/rancher/pkg/generated/controllers/ui.cattle.io"
+	uicontroller "github.com/rancher/rancher/pkg/generated/controllers/ui.cattle.io/v1"
 	"github.com/rancher/rancher/pkg/generated/controllers/upgrade.cattle.io"
 	plancontrolers "github.com/rancher/rancher/pkg/generated/controllers/upgrade.cattle.io/v1"
 	"github.com/rancher/rancher/pkg/peermanager"
@@ -155,6 +157,7 @@ type Context struct {
 	K8s                 *kubernetes.Clientset
 	Plan                plancontrolers.Interface
 	Telemetry           telemetryv1.Interface
+	UI                  uicontroller.Interface
 
 	ASL                     accesscontrol.AccessSetLookup
 	ClientConfig            clientcmd.ClientConfig
@@ -184,6 +187,7 @@ type Context struct {
 	crd          *apiextensions.Factory
 	plan         *upgrade.Factory
 	telemetry    *telemetry.Factory
+	ui           *ui.Factory
 
 	started bool
 }
@@ -465,6 +469,11 @@ func NewContext(ctx context.Context, clientConfig clientcmd.ClientConfig, restCo
 		return nil, err
 	}
 
+	ui, err := ui.NewFactoryFromConfigWithOptions(restConfig, opts)
+	if err != nil {
+		return nil, err
+	}
+
 	k8s, err := kubernetes.NewForConfig(restConfig)
 	if err != nil {
 		return nil, err
@@ -556,6 +565,7 @@ func NewContext(ctx context.Context, clientConfig clientcmd.ClientConfig, restCo
 		TunnelServer:            tunnelServer,
 		Plan:                    plan.Upgrade().V1(),
 		Telemetry:               telemetry.Telemetry().V1(),
+		UI:                      ui.Ui().V1(),
 
 		mgmt:         mgmt,
 		apps:         apps,
@@ -572,6 +582,7 @@ func NewContext(ctx context.Context, clientConfig clientcmd.ClientConfig, restCo
 		rbac:         rbac,
 		plan:         plan,
 		telemetry:    telemetry,
+		ui:           ui,
 	}
 
 	wContext.DeferredCAPIRegistration = NewDeferredRegistration[*CAPIContext, *DeferredCAPIInitializer](wContext, NewCAPIInitializer(wContext), "deferred-capi")

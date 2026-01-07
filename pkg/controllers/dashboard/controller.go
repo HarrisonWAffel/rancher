@@ -20,6 +20,7 @@ import (
 	"github.com/rancher/rancher/pkg/controllers/managementuser/rkecontrolplanecondition"
 	"github.com/rancher/rancher/pkg/controllers/provisioningv2"
 	"github.com/rancher/rancher/pkg/features"
+	"github.com/rancher/rancher/pkg/httpproxy"
 	"github.com/rancher/rancher/pkg/provisioningv2/kubeconfig"
 	"github.com/rancher/rancher/pkg/wrangler"
 	"github.com/rancher/wrangler/v3/pkg/needacert"
@@ -60,6 +61,8 @@ func Register(ctx context.Context, clients *wrangler.Context, embedded bool, reg
 	}
 
 	if features.ProvisioningV2.Enabled() || features.MCM.Enabled() {
+		// register meta proxy stuff
+		httpproxy.Register(ctx, clients)
 		clusterregistrationtoken.Register(ctx, clients)
 	}
 

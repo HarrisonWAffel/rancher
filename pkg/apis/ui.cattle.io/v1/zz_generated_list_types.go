@@ -1,5 +1,5 @@
 /*
-Copyright 2025 Rancher Labs, Inc.
+Copyright 2026 Rancher Labs, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -36,6 +36,23 @@ type NavLinkList struct {
 
 func NewNavLink(namespace, name string, obj NavLink) *NavLink {
 	obj.APIVersion, obj.Kind = SchemeGroupVersion.WithKind("NavLink").ToAPIVersionAndKind()
+	obj.Name = name
+	obj.Namespace = namespace
+	return &obj
+}
+
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+// ProxyEndpointList is a list of ProxyEndpoint resources
+type ProxyEndpointList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata"`
+
+	Items []ProxyEndpoint `json:"items"`
+}
+
+func NewProxyEndpoint(namespace, name string, obj ProxyEndpoint) *ProxyEndpoint {
+	obj.APIVersion, obj.Kind = SchemeGroupVersion.WithKind("ProxyEndpoint").ToAPIVersionAndKind()
 	obj.Name = name
 	obj.Namespace = namespace
 	return &obj

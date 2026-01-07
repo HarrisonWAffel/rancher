@@ -70,6 +70,11 @@ func router(ctx context.Context, localClusterEnabled bool, scaledContext *config
 		return nil, err
 	}
 
+	metaProxyV2, err := httpproxy.NewProxyV2("/v2proxy/", whitelist.Proxy.Get, scaledContext, httpproxy.NewDynamicCAPool())
+	if err != nil {
+		return nil, err
+	}
+
 	metaProxy, err := httpproxy.NewProxy("/proxy/", whitelist.Proxy.Get, scaledContext)
 	if err != nil {
 		return nil, err
@@ -136,6 +141,7 @@ func router(ctx context.Context, localClusterEnabled bool, scaledContext *config
 	authed.Path("/v3/tokenreview").Methods(http.MethodPost).Handler(&webhook.TokenReviewer{})
 	authed.Path(supportconfigs.Endpoint).Handler(&supportConfigGenerator)
 	authed.PathPrefix("/meta/proxy").Handler(metaProxy)
+	authed.PathPrefix("/meta/v2proxy").Handler(metaProxyV2)
 	authed.PathPrefix("/v3/identit").Handler(tokenAPI)
 	authed.PathPrefix("/v3/token").Handler(tokenAPI)
 	authed.PathPrefix("/v3").Handler(managementAPI)

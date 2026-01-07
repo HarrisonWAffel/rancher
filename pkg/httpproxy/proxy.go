@@ -137,20 +137,6 @@ func NewProxy(prefix string, validHosts Supplier, scaledContext *config.ScaledCo
 	}, nil
 }
 
-func setModifiedHeaders(res *http.Response) error {
-	// replace set cookies
-	res.Header.Del(APISetCookie)
-	// There may be multiple set cookies
-	for _, setCookie := range res.Header[SetCookie] {
-		res.Header.Add(APISetCookie, setCookie)
-	}
-	res.Header.Del(SetCookie)
-	// add security headers (similar to raw.githubusercontent)
-	res.Header.Set(CSP, "default-src 'none'; style-src 'unsafe-inline'; sandbox")
-	res.Header.Set(XContentType, "nosniff")
-	return nil
-}
-
 func (p *proxy) proxy(req *http.Request) error {
 	path := req.URL.String()
 	index := strings.Index(path, p.prefix)

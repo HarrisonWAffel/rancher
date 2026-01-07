@@ -1,5 +1,5 @@
 /*
-Copyright 2025 Rancher Labs, Inc.
+Copyright 2026 Rancher Labs, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -32,6 +32,7 @@ func init() {
 
 type Interface interface {
 	NavLink() NavLinkController
+	ProxyEndpoint() ProxyEndpointController
 }
 
 func New(controllerFactory controller.SharedControllerFactory) Interface {
@@ -46,4 +47,8 @@ type version struct {
 
 func (v *version) NavLink() NavLinkController {
 	return generic.NewController[*v1.NavLink, *v1.NavLinkList](schema.GroupVersionKind{Group: "ui.cattle.io", Version: "v1", Kind: "NavLink"}, "navlinks", true, v.controllerFactory)
+}
+
+func (v *version) ProxyEndpoint() ProxyEndpointController {
+	return generic.NewController[*v1.ProxyEndpoint, *v1.ProxyEndpointList](schema.GroupVersionKind{Group: "ui.cattle.io", Version: "v1", Kind: "ProxyEndpoint"}, "proxyendpoints", true, v.controllerFactory)
 }
