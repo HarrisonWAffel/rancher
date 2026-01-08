@@ -14,7 +14,7 @@ import (
 type DynamicCAPool struct {
 	mu    sync.Mutex
 	pool  atomic.Pointer[x509.CertPool] // Lock-free reads for TLS handshakes
-	certs map[string][]byte             // domain -> PEM data, protected by mu
+	certs map[string][]byte
 }
 
 func NewDynamicCAPool() *DynamicCAPool {
@@ -31,12 +31,21 @@ func NewDynamicCAPool() *DynamicCAPool {
 }
 
 // AddCA adds CA certificates for a given identifier (typically a domain).
-// The pool is rebuilt atomically, making the new CAs immediately visible
-// to all new TLS connections.
 func (d *DynamicCAPool) AddCA(id string, pemData []byte) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.certs[id] = pemData
+	d.rebuildPoolLocked()
+}
+
+func (d *DynamicCAPool) AppendCA(id string, pemData []byte) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if _, ok := d.certs[id]; !ok {
+		d.certs[id] = pemData
+	} else {
+		d.certs[id] = append(d.certs[id], pemData...)
+	}
 	d.rebuildPoolLocked()
 }
 
@@ -53,18 +62,15 @@ func (d *DynamicCAPool) RemoveCA(id string) {
 // Must be called with mu held. The new pool is stored atomically, ensuring
 // lock-free visibility to readers without data races.
 func (d *DynamicCAPool) rebuildPoolLocked() {
-	// Start with system certs as the base
 	pool, err := x509.SystemCertPool()
 	if err != nil {
 		pool = x509.NewCertPool()
 	}
 
-	// Add all custom CA certificates
 	for _, pem := range d.certs {
 		pool.AppendCertsFromPEM(pem)
 	}
 
-	// Atomic swap - new connections will immediately see this pool
 	d.pool.Store(pool)
 }
 

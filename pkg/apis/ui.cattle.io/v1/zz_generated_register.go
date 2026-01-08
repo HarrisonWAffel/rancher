@@ -28,8 +28,8 @@ import (
 )
 
 var (
-	NavLinkResourceName       = "navlinks"
-	ProxyEndpointResourceName = "proxyendpoints"
+	NavLinkResourceName                 = "navlinks"
+	ProxyEndpointCollectionResourceName = "proxyendpointcollections"
 )
 
 // SchemeGroupVersion is group version used to register these objects
@@ -55,8 +55,8 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 	scheme.AddKnownTypes(SchemeGroupVersion,
 		&NavLink{},
 		&NavLinkList{},
-		&ProxyEndpoint{},
-		&ProxyEndpointList{},
+		&ProxyEndpointCollection{},
+		&ProxyEndpointCollectionList{},
 	)
 	metav1.AddToGroupVersion(scheme, SchemeGroupVersion)
 	return nil

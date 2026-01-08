@@ -43,16 +43,16 @@ func NewNavLink(namespace, name string, obj NavLink) *NavLink {
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
-// ProxyEndpointList is a list of ProxyEndpoint resources
-type ProxyEndpointList struct {
+// ProxyEndpointCollectionList is a list of ProxyEndpointCollection resources
+type ProxyEndpointCollectionList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata"`
 
-	Items []ProxyEndpoint `json:"items"`
+	Items []ProxyEndpointCollection `json:"items"`
 }
 
-func NewProxyEndpoint(namespace, name string, obj ProxyEndpoint) *ProxyEndpoint {
-	obj.APIVersion, obj.Kind = SchemeGroupVersion.WithKind("ProxyEndpoint").ToAPIVersionAndKind()
+func NewProxyEndpointCollection(namespace, name string, obj ProxyEndpointCollection) *ProxyEndpointCollection {
+	obj.APIVersion, obj.Kind = SchemeGroupVersion.WithKind("ProxyEndpointCollection").ToAPIVersionAndKind()
 	obj.Name = name
 	obj.Namespace = namespace
 	return &obj

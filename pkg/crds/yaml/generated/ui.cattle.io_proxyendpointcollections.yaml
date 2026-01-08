@@ -1,0 +1,120 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.17.1
+  name: proxyendpointcollections.ui.cattle.io
+spec:
+  group: ui.cattle.io
+  names:
+    kind: ProxyEndpointCollection
+    listKind: ProxyEndpointCollectionList
+    plural: proxyendpointcollections
+    singular: proxyendpointcollection
+  scope: Cluster
+  versions:
+  - name: v1
+    schema:
+      openAPIV3Schema:
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            properties:
+              endpoints:
+                items:
+                  properties:
+                    endpoint:
+                      items:
+                        properties:
+                          allowedCredentials:
+                            items:
+                              properties:
+                                allowedSchema:
+                                  description: |-
+                                    something like amazonec2credentialconfig I guess
+                                    this field HEAVILY depends on the CC public API stuff and
+                                    the related security issue (that I have no information about T_T)
+                                  type: string
+                                requiredFields:
+                                  description: |-
+                                    determines if a field must be populated in order for the
+                                    request to proceed
+                                  items:
+                                    type: string
+                                  type: array
+                              required:
+                              - allowedSchema
+                              - requiredFields
+                              type: object
+                            type: array
+                          certificates:
+                            type: string
+                          injectionDetails:
+                            properties:
+                              allowedHeaders:
+                                items:
+                                  type: string
+                                type: array
+                              bodyInjectionRules:
+                                items:
+                                  properties:
+                                    contentType:
+                                      description: |-
+                                        ContentType denotes that the following body paths
+                                        should only be respected when working with a specific
+                                        request body content type. If empty, this is assumed to be
+                                        JSON.
+                                      type: string
+                                    paths:
+                                      description: |-
+                                        BodyPaths is a slice of ContentType specific
+                                        notation that specifies where in a request body
+                                        templating can take place.
+
+                                        For JSON request bodies, this is expected to be a slice of
+                                        strings which adhere to the JSONPath specification.
+                                      items:
+                                        type: string
+                                      type: array
+                                  type: object
+                                type: array
+                            type: object
+                          urlpattern:
+                            type: string
+                        required:
+                        - urlpattern
+                        type: object
+                      type: array
+                    name:
+                      type: string
+                  required:
+                  - endpoint
+                  - name
+                  type: object
+                type: array
+              sourceID:
+                type: string
+            required:
+            - endpoints
+            - sourceID
+            type: object
+        type: object
+    served: true
+    storage: true

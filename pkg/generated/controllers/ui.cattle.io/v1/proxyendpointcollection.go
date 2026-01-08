@@ -23,17 +23,17 @@ import (
 	"github.com/rancher/wrangler/v3/pkg/generic"
 )
 
-// ProxyEndpointController interface for managing ProxyEndpoint resources.
-type ProxyEndpointController interface {
-	generic.ControllerInterface[*v1.ProxyEndpoint, *v1.ProxyEndpointList]
+// ProxyEndpointCollectionController interface for managing ProxyEndpointCollection resources.
+type ProxyEndpointCollectionController interface {
+	generic.ControllerInterface[*v1.ProxyEndpointCollection, *v1.ProxyEndpointCollectionList]
 }
 
-// ProxyEndpointClient interface for managing ProxyEndpoint resources in Kubernetes.
-type ProxyEndpointClient interface {
-	generic.ClientInterface[*v1.ProxyEndpoint, *v1.ProxyEndpointList]
+// ProxyEndpointCollectionClient interface for managing ProxyEndpointCollection resources in Kubernetes.
+type ProxyEndpointCollectionClient interface {
+	generic.ClientInterface[*v1.ProxyEndpointCollection, *v1.ProxyEndpointCollectionList]
 }
 
-// ProxyEndpointCache interface for retrieving ProxyEndpoint resources in memory.
-type ProxyEndpointCache interface {
-	generic.CacheInterface[*v1.ProxyEndpoint]
+// ProxyEndpointCollectionCache interface for retrieving ProxyEndpointCollection resources in memory.
+type ProxyEndpointCollectionCache interface {
+	generic.CacheInterface[*v1.ProxyEndpointCollection]
 }

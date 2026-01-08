@@ -1,7 +1,7 @@
 package httpproxy
 
 import (
-	bytes "bytes"
+	"bytes"
 	"context"
 	"crypto/tls"
 	"encoding/json"
@@ -35,15 +35,15 @@ import (
 )
 
 type proxyV2 struct {
-	validHostsSupplier Supplier
-	prefix             string
-	credentials        v1.SecretInterface
-	mgmtClustersCache  mgmtv3.ClusterCache
-	provClustersCache  provv1.ClusterCache
-	authorizer         authorizer.Authorizer
-	endpointCache      uiv1.ProxyEndpointCache
-	dynamicSchemaCache mgmtv3.DynamicSchemaCache
-	dynamicCAPool      *DynamicCAPool
+	validHostsSupplier      Supplier
+	prefix                  string
+	credentials             v1.SecretInterface
+	mgmtClustersCache       mgmtv3.ClusterCache
+	provClustersCache       provv1.ClusterCache
+	authorizer              authorizer.Authorizer
+	endpointCollectionCache uiv1.ProxyEndpointCollectionCache
+	dynamicSchemaCache      mgmtv3.DynamicSchemaCache
+	dynamicCAPool           *DynamicCAPool
 }
 
 const (
@@ -52,7 +52,7 @@ const (
 
 var (
 	templateRegex = regexp.MustCompile(templateFormat)
-	byURL         = "byURLPattern"
+	bySourceID    = "bySourceID"
 )
 
 func NewProxyV2(prefix string, validHosts Supplier, scaledContext *config.ScaledContext, dynamicCAPool *DynamicCAPool) (http.Handler, error) {
@@ -69,25 +69,25 @@ func NewProxyV2(prefix string, validHosts Supplier, scaledContext *config.Scaled
 	}
 
 	p := &proxyV2{
-		authorizer:         authz,
-		prefix:             prefix,
-		validHostsSupplier: validHosts,
-		credentials:        scaledContext.Core.Secrets("cattle-global-data"),
-		mgmtClustersCache:  scaledContext.Wrangler.Mgmt.Cluster().Cache(),
-		provClustersCache:  scaledContext.Wrangler.Provisioning.Cluster().Cache(),
-		endpointCache:      scaledContext.Wrangler.UI.ProxyEndpoint().Cache(),
-		dynamicSchemaCache: scaledContext.Wrangler.Mgmt.DynamicSchema().Cache(),
-		dynamicCAPool:      dynamicCAPool,
+		authorizer:              authz,
+		prefix:                  prefix,
+		validHostsSupplier:      validHosts,
+		credentials:             scaledContext.Core.Secrets("cattle-global-data"),
+		mgmtClustersCache:       scaledContext.Wrangler.Mgmt.Cluster().Cache(),
+		provClustersCache:       scaledContext.Wrangler.Provisioning.Cluster().Cache(),
+		endpointCollectionCache: scaledContext.Wrangler.UI.ProxyEndpointCollection().Cache(),
+		dynamicSchemaCache:      scaledContext.Wrangler.Mgmt.DynamicSchema().Cache(),
+		dynamicCAPool:           dynamicCAPool,
 	}
 
-	p.endpointCache.AddIndexer(byURL, func(obj *ui.ProxyEndpoint) ([]string, error) {
+	p.endpointCollectionCache.AddIndexer(bySourceID, func(obj *ui.ProxyEndpointCollection) ([]string, error) {
 		if obj == nil {
 			return []string{}, nil
 		}
-		if strings.Contains(obj.Spec.UrlPattern, "*") {
-			return []string{"wildcard"}, nil
+		if obj.Spec.SourceID == "" {
+			return []string{"rancher"}, nil
 		}
-		return []string{obj.Spec.UrlPattern}, nil
+		return []string{obj.Spec.SourceID}, nil
 	})
 
 	transport := &http.Transport{
@@ -129,11 +129,16 @@ func (p *proxyV2) proxy(req *http.Request) error {
 		return err
 	}
 
+	sourceID := req.Header.Get("X-Cattle-Source-Id")
+	if sourceID == "" {
+		sourceID = "rancher"
+	}
+
 	// Need to identify the correct ProxyEndpoint CR for the incoming domain
 	// TODO: find out if a meta CR exists for this domain.
 	// 		 This requires a pretty interesting lookup algorithm
 	//		 since we could have wild cards and absolute paths
-	allowed, endpoint := p.isAllowed(destURL.String())
+	allowed, endpoint := p.isAllowed(destURL.String(), sourceID)
 	if !allowed {
 		return fmt.Errorf("invalid host: %v", destURLHostname)
 	}
@@ -178,42 +183,37 @@ func (p *proxyV2) proxy(req *http.Request) error {
 	// play with cookies
 	replaceCookies(req)
 
-	if endpoint != nil {
-		// TODO: We should only be getting the fields which are set for the schema
-		//		 associated with the incoming cloud credential. idk how that would work.
-		if ccID != "" {
-			user, ok := request.UserFrom(req.Context())
-			if !ok {
-				return fmt.Errorf("failed to find user")
-			}
+	if ccID != "" {
+		user, ok := request.UserFrom(req.Context())
+		if !ok {
+			return fmt.Errorf("failed to find user")
+		}
+		decision, reason, err := p.authorizer.Authorize(req.Context(), authorizer.AttributesRecord{
+			User:            user,
+			Verb:            "get",
+			Namespace:       "cattle-global-id",
+			APIVersion:      "v1",
+			Resource:        "secrets",
+			Name:            ccID,
+			ResourceRequest: true,
+		})
+		if err != nil {
+			return err
+		}
 
-			decision, reason, err := p.authorizer.Authorize(req.Context(), authorizer.AttributesRecord{
-				User:            user,
-				Verb:            "get",
-				Namespace:       "cattle-global-id",
-				APIVersion:      "v1",
-				Resource:        "secrets",
-				Name:            ccID,
-				ResourceRequest: true,
-			})
-			if err != nil {
-				return err
-			}
+		unauthorizedErr := fmt.Errorf("unauthorized %s to %s/%s: %s", user.GetName(), "cattle-global-id", ccID, reason)
+		if decision != authorizer.DecisionAllow {
+			return unauthorizedErr
+		}
 
-			unauthorizedErr := fmt.Errorf("unauthorized %s to %s/%s: %s", user.GetName(), "cattle-global-id", ccID, reason)
-			if decision != authorizer.DecisionAllow {
-				return unauthorizedErr
-			}
+		cc, err := p.credentials.Get(ccID, v2.GetOptions{})
+		if err != nil {
+			return err
+		}
 
-			cc, err := p.credentials.Get(ccID, v2.GetOptions{})
-			if err != nil {
-				return err
-			}
-
-			p.templateHeaders(endpoint.Spec, req, cc.Data)
-			if err := p.templateJSONBody(endpoint.Spec, req, cc.Data); err != nil {
-				return err
-			}
+		p.templateHeaders(endpoint, req, cc.Data)
+		if err := p.templateJSONBody(endpoint, req, cc.Data); err != nil {
+			return err
 		}
 	}
 
@@ -221,96 +221,81 @@ func (p *proxyV2) proxy(req *http.Request) error {
 }
 
 // TODO: we should support entries that specify a host and a path.
-func (p *proxyV2) isAllowed(fullURL string) (bool, *ui.ProxyEndpoint) {
+func (p *proxyV2) isAllowed(fullURL, sourceID string) (bool, ui.Endpoint) {
 
 	// strip the protocol first
 	fullURL = strings.ReplaceAll(fullURL, "https://", "")
 	fullURL = strings.ReplaceAll(fullURL, "http://", "")
 
-	// first check the index to see if we have a direct match (no wildcard)
-	meta, err := p.endpointCache.GetByIndex(byURL, fullURL)
+	meta, err := p.endpointCollectionCache.GetByIndex(bySourceID, sourceID)
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
-			return false, nil
+			return false, ui.Endpoint{}
 		}
 	}
 
-	if len(meta) > 0 {
-		return true, meta[0]
+	if len(meta) == 0 {
+		return false, ui.Endpoint{}
 	}
 
-	// If not get all the wild cards and see if our host matches one of them
-	allWildCards, err := p.endpointCache.GetByIndex(byURL, "wildcard")
-	if err != nil {
-		return false, nil
+	// would add a webhook check to ensure only one source ID can exist at a time
+	// and default to this if two are ever created for some reason
+	slices.SortFunc(meta, func(a, b *ui.ProxyEndpointCollection) int {
+		if a.Name > b.Name {
+			return 1
+		}
+		return -1
+	})
+
+	for _, endpoints := range meta[0].Spec.Endpoints {
+		found, match := findEndpointFromCollection(fullURL, endpoints)
+		if found {
+			if match.DenyAccess {
+				return false, match
+			}
+			return true, match
+		}
 	}
 
-	var match *ui.ProxyEndpoint
+	return false, ui.Endpoint{}
+}
+
+func findEndpointFromCollection(url string, collection ui.ProxyEndpointSet) (bool, ui.Endpoint) {
 	var lastMatchLength int
-	for _, entry := range allWildCards {
+	match := ui.Endpoint{}
+	for _, endpoint := range collection.Endpoints {
 		// match the urlPattern with the incoming host
-		regxp, err := wildcardToRegex(entry.Spec.UrlPattern)
+		regxp, err := wildcardToRegex(endpoint.UrlPattern)
 		if err != nil {
 			continue
 		}
-		if regxp.MatchString(fullURL) {
+		if regxp.MatchString(url) {
 			// We want the most absolute match (i.e. the longest)
 			if len(regxp.String()) > lastMatchLength {
 				lastMatchLength = len(regxp.String())
-				match = entry
+				match = endpoint
 			}
 		}
 	}
-
-	if match != nil && lastMatchLength != 0 {
-		return true, match
+	if lastMatchLength == 0 {
+		return false, ui.Endpoint{}
 	}
-
-	return false, nil
+	return true, match
 }
 
 func wildcardToRegex(pattern string) (*regexp.Regexp, error) {
+	// TODO: if we want to maintain % as the wild card symbol we can just swap it out here
 	// Escape special characters (e.g., "." becomes "\.", "*" becomes "\*")
-	regexStr := regexp.QuoteMeta(pattern)
-
 	// Replace the escaped wildcard "\*" with the regex wildcard ".*"
-	regexStr = strings.ReplaceAll(regexStr, "\\*", ".*")
-
-	// matche the entire string
-	regexStr = "^" + regexStr + "$"
-
 	// (?i) flag makes the whole expression case-insensitive
-	return regexp.Compile("(?i)" + regexStr)
+	return regexp.Compile("(?i)^" + strings.ReplaceAll(regexp.QuoteMeta(pattern), "\\*", ".*") + "$")
 }
 
-// TEMPLATING AND HEADERS!!!
+func (p *proxyV2) templateHeaders(rules ui.Endpoint, req *http.Request, ccFields map[string][]byte) {
 
-func (p *proxyV2) templateHeaders(rules ui.ProxyEndpointSpec, req *http.Request, ccFields map[string][]byte) {
-	newHeaders := req.Header
-	for name, values := range req.Header {
-		if !slices.Contains(rules.InjectionDetails.AllowedHeaders, name) {
-			continue
-		}
-		for _, value := range values {
-			newValue := value
-			for _, templatedValue := range templateRegex.FindAllString(value, -1) {
-				_, secretValue, found := strings.Cut(templatedValue, ":")
-				if !found {
-					continue
-				}
-				realValue, found := ccFields[strings.TrimSuffix(secretValue, "}}")]
-				if !found {
-					continue
-				}
-				newValue = strings.ReplaceAll(newValue, templatedValue, string(realValue))
-			}
-			newHeaders.Add(name, newValue)
-		}
-	}
-	req.Header = newHeaders
 }
 
-func (p *proxyV2) templateJSONBody(rules ui.ProxyEndpointSpec, req *http.Request, cc map[string][]byte) error {
+func (p *proxyV2) templateJSONBody(rules ui.Endpoint, req *http.Request, cc map[string][]byte) error {
 	if req.Header.Get("Content-Type") != "application/json" {
 		return nil
 	}

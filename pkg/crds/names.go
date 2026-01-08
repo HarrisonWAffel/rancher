@@ -181,7 +181,7 @@ func MCMCRDs() []string {
 func UIPluginsCRD() []string {
 	return []string{
 		"uiplugins.catalog.cattle.io",
-		"proxyendpoints.ui.cattle.io",
+		"proxyendpointcollections.ui.cattle.io",
 	}
 }
 
@@ -281,5 +281,5 @@ var MigratedResources = map[string]bool{
 	"users.management.cattle.io":                                      true,
 	"uiplugins.catalog.cattle.io":                                     true,
 	"workloads.project.cattle.io":                                     false,
-	"proxyendpoints.ui.cattle.io":                                     true,
+	"proxyendpointcollections.ui.cattle.io":                           true,
 }

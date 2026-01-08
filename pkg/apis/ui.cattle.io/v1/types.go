@@ -38,24 +38,33 @@ type NavLinkTargetService struct {
 // +kubebuilder:resource:scope=Cluster
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
-type ProxyEndpoint struct {
+type ProxyEndpointCollection struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	// +required
-	Spec ProxyEndpointSpec `json:"spec"`
+	Spec ProxyEndpointCollectionSpec `json:"spec,omitempty"`
 }
 
-type ProxyEndpointSpec struct {
+type ProxyEndpointCollectionSpec struct {
+	// +required
+	SourceID string `json:"sourceID,omitempty"`
+	// +required
+	Endpoints []ProxyEndpointSet `json:"endpoints,omitempty"`
+}
+
+type ProxyEndpointSet struct {
+	// +required
+	Name string `json:"name,omitempty"`
+	// +required
+	Endpoints []Endpoint `json:"endpoint,omitempty"`
+}
+
+type Endpoint struct {
 	// +required
 	UrlPattern string `json:"urlpattern,omitempty"`
 
-	// helps specify the exact endpoint spec to use,
-	// provided by the client with the X-Source-ID header,
-	// this could be the plain text name of the extension
-	// combined with the author or other metadata?
 	// +optional
-	SourceID string `json:"sourceID,omitempty"`
+	DenyAccess bool
 
 	// +optional
 	AllowedCredentials []ProxyEndpointCredentialType `json:"allowedCredentials,omitempty"`
@@ -73,9 +82,9 @@ type ProxyEndpointCredentialType struct {
 	// the related security issue (that I have no information about T_T)
 	// +required
 	AllowedSchema string `json:"allowedSchema,omitempty"`
-	// +required
 	// determines if a field must be populated in order for the
 	// request to proceed
+	// +required
 	RequiredFields []string `json:"requiredFields,omitempty"`
 }
 

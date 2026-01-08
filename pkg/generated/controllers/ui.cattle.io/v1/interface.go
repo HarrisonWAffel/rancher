@@ -32,7 +32,7 @@ func init() {
 
 type Interface interface {
 	NavLink() NavLinkController
-	ProxyEndpoint() ProxyEndpointController
+	ProxyEndpointCollection() ProxyEndpointCollectionController
 }
 
 func New(controllerFactory controller.SharedControllerFactory) Interface {
@@ -49,6 +49,6 @@ func (v *version) NavLink() NavLinkController {
 	return generic.NewController[*v1.NavLink, *v1.NavLinkList](schema.GroupVersionKind{Group: "ui.cattle.io", Version: "v1", Kind: "NavLink"}, "navlinks", true, v.controllerFactory)
 }
 
-func (v *version) ProxyEndpoint() ProxyEndpointController {
-	return generic.NewController[*v1.ProxyEndpoint, *v1.ProxyEndpointList](schema.GroupVersionKind{Group: "ui.cattle.io", Version: "v1", Kind: "ProxyEndpoint"}, "proxyendpoints", true, v.controllerFactory)
+func (v *version) ProxyEndpointCollection() ProxyEndpointCollectionController {
+	return generic.NewController[*v1.ProxyEndpointCollection, *v1.ProxyEndpointCollectionList](schema.GroupVersionKind{Group: "ui.cattle.io", Version: "v1", Kind: "ProxyEndpointCollection"}, "proxyendpointcollections", true, v.controllerFactory)
 }

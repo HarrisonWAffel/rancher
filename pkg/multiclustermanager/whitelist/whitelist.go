@@ -4,7 +4,6 @@ import (
 	"strings"
 	"sync"
 
-	v1 "github.com/rancher/rancher/pkg/apis/ui.cattle.io/v1"
 	"github.com/rancher/rancher/pkg/settings"
 )
 
@@ -44,7 +43,7 @@ func (p *ProxyAcceptList) Add(key string) {
 	p.accept[key] = struct{}{}
 }
 
-func (p *ProxyAcceptList) Set(key string, proxy v1.ProxyEndpoint) {
+func (p *ProxyAcceptList) Set(key string) {
 	p.Lock()
 	defer p.Unlock()
 	p.accept[key] = struct{}{}
