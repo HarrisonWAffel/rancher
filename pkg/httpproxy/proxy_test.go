@@ -209,6 +209,12 @@ func TestConstructRegex(t *testing.T) {
 			found:         false,
 			description:   "should not match suffix",
 		},
+		{
+			host:          "ec2.amazonaws.com",
+			whitelistItem: "%c2.amazonaws.com",
+			found:         false,
+			description:   "must be a complete label",
+		},
 	}
 
 	for _, scenario := range tests {
@@ -220,6 +226,121 @@ func TestConstructRegex(t *testing.T) {
 				scenario.whitelistItem,
 				scenario.description,
 			))
+	}
+}
+
+func TestIsOverlyBroad(t *testing.T) {
+	tests := []struct {
+		name          string
+		domain        string
+		isOverlyBroad bool
+	}{
+		{
+			name:          "simple url",
+			domain:        "example.com",
+			isOverlyBroad: false,
+		},
+		{
+			name:          "simple properly scoped wildcard using *",
+			domain:        "*.example.com",
+			isOverlyBroad: false,
+		},
+		{
+			name:          "simple properly scoped wildcard using %",
+			domain:        "%.example.org",
+			isOverlyBroad: false,
+		},
+		{
+			name:          "properly scoped wildcard using *",
+			domain:        "*example.com",
+			isOverlyBroad: false,
+		},
+		{
+			name:          "properly scoped wildcard subdomain using *",
+			domain:        "*.sub.example.com",
+			isOverlyBroad: false,
+		},
+		{
+			name:          "properly scoped wildcard subdomain using %",
+			domain:        "%.sub.example.com",
+			isOverlyBroad: false,
+		},
+		{
+			name:          "properly scoped wildcard subdomain using % with multi-part TLD",
+			domain:        "%.sub.example.co.uk",
+			isOverlyBroad: false,
+		},
+		{
+			name:          "properly scoped wildcard subdomain using * with multi-part TLD",
+			domain:        "*.sub.example.co.uk",
+			isOverlyBroad: false,
+		},
+		{
+			name:          "overly broad wildcard using *",
+			domain:        "*.com",
+			isOverlyBroad: true,
+		},
+		{
+			name:          "overly broad wildcard using %",
+			domain:        "%.com",
+			isOverlyBroad: true,
+		},
+		{
+			name:          "overly broad wildcard using * and a multi-part TLD",
+			domain:        "*.co.uk",
+			isOverlyBroad: true,
+		},
+		{
+			name:          "overly broad wildcard using % and a multi-part TLD",
+			domain:        "%.co.uk",
+			isOverlyBroad: true,
+		},
+		{
+			name:          "overly broad wildcard using % and *",
+			domain:        "*.%.com",
+			isOverlyBroad: true,
+		},
+		{
+			name:          "overly broad wildcard using multiple %",
+			domain:        "%.%.org",
+			isOverlyBroad: true,
+		},
+		{
+			name:          "overly broad wildcard using multiple % and multi-part TLD",
+			domain:        "%.%.co.uk",
+			isOverlyBroad: true,
+		},
+		{
+			name:          "overly broad wildcard using % and * and a multi-part TLD",
+			domain:        "*.%.gov.uk",
+			isOverlyBroad: true,
+		},
+		{
+			name:          "just a TLD",
+			domain:        "com",
+			isOverlyBroad: true,
+		},
+		{
+			name:          "multi-part TLD only",
+			domain:        "co.uk",
+			isOverlyBroad: true,
+		},
+		{
+			name:          "empty string",
+			domain:        "",
+			isOverlyBroad: false,
+		},
+		{
+			name:          "overly broad with only star",
+			domain:        "*",
+			isOverlyBroad: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			assert.Equalf(t, test.isOverlyBroad, isOverlyBroad(test.domain), "failed on domain %v, expected isOverlyBroad to be %v", test.domain, test.isOverlyBroad)
+		})
 	}
 }
 
