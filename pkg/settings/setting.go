@@ -416,6 +416,11 @@ var (
 	// bytes.
 	// The default = 1MiB
 	APIBodyLimit = NewSetting("public-api-body-limit", "1Mi")
+
+	// DisableDefaultProxyEndpoint controls whether built-in ProxyEndpoint CRs are automatically
+	// created in the local cluster. It's value is a comma seperated list of ProxyEndpoint names to disable (e.g. aws, azure, digitalocean, etc).
+	// Refer to Rancher documentation on all built-in ProxyEndpoints.
+	DisableDefaultProxyEndpoint = NewSetting("disable-default-proxy-endpoint", "")
 )
 
 // FullShellImage returns the full private registry name of the rancher shell image.

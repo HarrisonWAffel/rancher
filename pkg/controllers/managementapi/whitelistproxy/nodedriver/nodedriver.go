@@ -19,13 +19,13 @@ func sync(key string, nodeDriver *v3.NodeDriver) (runtime.Object, error) {
 	}
 	if nodeDriver.DeletionTimestamp != nil {
 		for _, d := range nodeDriver.Spec.WhitelistDomains {
-			whitelist.Proxy.Rm(d)
+			whitelist.Proxy.Rm(d, string(nodeDriver.UID))
 		}
 		return nil, nil
 	}
 
 	for _, d := range nodeDriver.Spec.WhitelistDomains {
-		whitelist.Proxy.Add(d)
+		whitelist.Proxy.Add(d, string(nodeDriver.UID))
 	}
 	return nil, nil
 }

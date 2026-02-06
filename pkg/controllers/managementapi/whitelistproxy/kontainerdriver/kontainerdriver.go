@@ -19,13 +19,13 @@ func sync(key string, kontainerDriver *v3.KontainerDriver) (runtime.Object, erro
 	}
 	if kontainerDriver.DeletionTimestamp != nil {
 		for _, d := range kontainerDriver.Spec.WhitelistDomains {
-			whitelist.Proxy.Rm(d)
+			whitelist.Proxy.Rm(d, string(kontainerDriver.UID))
 		}
 		return nil, nil
 	}
 
 	for _, d := range kontainerDriver.Spec.WhitelistDomains {
-		whitelist.Proxy.Add(d)
+		whitelist.Proxy.Add(d, string(kontainerDriver.UID))
 	}
 	return nil, nil
 }
