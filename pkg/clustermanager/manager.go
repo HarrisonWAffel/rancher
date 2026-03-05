@@ -25,6 +25,7 @@ import (
 	"github.com/rancher/rancher/pkg/rkecerts"
 	"github.com/rancher/rancher/pkg/settings"
 	"github.com/rancher/rancher/pkg/types/config"
+	"github.com/rancher/rancher/pkg/wrangler"
 	"github.com/rancher/steve/pkg/accesscontrol"
 	"github.com/rancher/wrangler/v3/pkg/ratelimit"
 	"github.com/sirupsen/logrus"
@@ -158,7 +159,29 @@ func (m *Manager) startController(r *record, controllers, clusterOwner bool) err
 				m.markUnavailable(r.clusterRec.Name)
 				m.Stop(r.clusterRec)
 			}
+
+			errChan := m.ScaledContext.Wrangler.DeferredCAPIRegistration.DeferFuncWithError(func(capi *wrangler.CAPIContext) error {
+				logrus.Infof("[HERE!!!!!] starting capi for cluster controllers")
+				return m.doCAPIStart(r, clusterOwner, capi)
+			})
+
+			select {
+			case err := <-errChan:
+				if err != nil {
+					logrus.Errorf("---------------- FAILURE ----------------")
+					logrus.Errorf("[HERE!!!!!] failed to start capi controllers %s: %v", r.cluster.ClusterName, err)
+					logrus.Errorf("---------------- FAILURE ----------------")
+					m.markUnavailable(r.clusterRec.Name)
+					m.Stop(r.clusterRec)
+				}
+			case <-r.ctx.Done():
+				logrus.Errorf("[HERE!!!!!] context cancelled before deferred capi registration for cluster %s completed", r.cluster.ClusterName)
+				m.markUnavailable(r.clusterRec.Name)
+				m.Stop(r.clusterRec)
+			}
+			logrus.Infof("[HERE!!!!!] DONE starting capi for cluster controllers")
 		}()
+
 		r.started = true
 		r.owner = clusterOwner
 	}
@@ -179,6 +202,67 @@ func (m *Manager) changed(r *record, cluster *apimgmtv3.Cluster, controllers, cl
 	}
 
 	return false
+}
+
+func (m *Manager) doCAPIStart(rec *record, clusterOwner bool, capi *wrangler.CAPIContext) (exit error) {
+	defer func() {
+		if exit == nil {
+			logrus.Infof("Starting cluster agent for %s [owner=%v]", rec.cluster.ClusterName, clusterOwner)
+		}
+	}()
+
+	for i := 0; ; i++ {
+		// Prior to k8s v1.14, we simply did a DiscoveryClient.Version() check to see if the user cluster is alive
+		// As of k8s v1.14, kubeapi returns a successful version response even if etcd is not available.
+		// To work around this, now we try to get a namespace from the API, even if not found, it means the API is up.
+		if _, err := rec.cluster.K8sClient.CoreV1().Namespaces().Get(rec.ctx, "kube-system", metav1.GetOptions{}); err != nil && !apierrors.IsNotFound(err) {
+			if i == 2 {
+				m.markUnavailable(rec.cluster.ClusterName)
+			}
+			select {
+			case <-rec.ctx.Done():
+				return rec.ctx.Err()
+			case <-time.After(5 * time.Second):
+				continue
+			}
+		}
+		break
+	}
+
+	if err := m.startSem.Acquire(rec.ctx, 1); err != nil {
+		return err
+	}
+	defer m.startSem.Release(1)
+
+	transaction := controller.NewHandlerTransaction(rec.ctx)
+	if !clusterOwner {
+		return nil
+	}
+
+	if err := clusterController.RegisterCAPI(transaction, capi, rec.cluster, rec.clusterRec, m); err != nil {
+		transaction.Rollback()
+		return err
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		defer close(done)
+		err := rec.cluster.Start(rec.ctx)
+		if err == nil {
+			transaction.Commit()
+		} else {
+			transaction.Rollback()
+		}
+		done <- err
+	}()
+
+	select {
+	case <-time.After(10 * time.Minute):
+		rec.cancel()
+		return fmt.Errorf("timeout syncing controllers")
+	case err := <-done:
+		return err
+	}
 }
 
 func (m *Manager) doStart(rec *record, clusterOwner bool) (exit error) {

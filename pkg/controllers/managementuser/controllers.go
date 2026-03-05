@@ -28,6 +28,15 @@ import (
 	"github.com/rancher/rancher/pkg/wrangler"
 )
 
+func RegisterCAPI(ctx context.Context, capi *wrangler.CAPIContext, cluster *config.UserContext, clusterRec *apimgmtv3.Cluster, kubeConfigGetter common.KubeConfigGetter) error {
+	// For non-local clusters, register nodesyncer with CAPI context
+	if cluster.ClusterName != "local" {
+		nodesyncer.Register(ctx, cluster, capi, kubeConfigGetter)
+	}
+	registerProvV2(ctx, cluster, capi, clusterRec)
+	return nil
+}
+
 func Register(ctx context.Context, mgmt *config.ScaledContext, cluster *config.UserContext, clusterRec *apimgmtv3.Cluster, kubeConfigGetter common.KubeConfigGetter) error {
 	if err := rbac.Register(ctx, cluster); err != nil {
 		return err
@@ -46,22 +55,8 @@ func Register(ctx context.Context, mgmt *config.ScaledContext, cluster *config.U
 	// For other clusters, we still need to wait for CAPI to be ready because
 	// registerProvV2 requires CAPI resources.
 	if cluster.ClusterName == "local" {
-		_ = cluster.DeferredStart(ctx, func(ctx context.Context) error {
-			nodesyncer.Register(ctx, cluster, nil, kubeConfigGetter)
-			return nil
-		})()
+		nodesyncer.Register(ctx, cluster, nil, kubeConfigGetter)
 	}
-
-	mgmt.Wrangler.DeferredCAPIRegistration.DeferFunc(func(capi *wrangler.CAPIContext) {
-		_ = cluster.DeferredStart(ctx, func(ctx context.Context) error {
-			// For non-local clusters, register nodesyncer with CAPI context
-			if cluster.ClusterName != "local" {
-				nodesyncer.Register(ctx, cluster, capi, kubeConfigGetter)
-			}
-			registerProvV2(ctx, cluster, capi, clusterRec)
-			return nil
-		})()
-	})
 
 	registerCaches(cluster)
 
