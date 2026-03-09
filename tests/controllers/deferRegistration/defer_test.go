@@ -198,19 +198,19 @@ func (d *DeferredRegistrationSuite) TestDeferFuncWithError() {
 	// queue up some deferred functions
 	count := 0
 	errCount := 0
-	err1 := testDefer.DeferFuncWithError(func(clients *testDeferContext) error {
+	err1 := testDefer.DeferFuncWithError(context.Background(), func(clients *testDeferContext) error {
 		require.Equal(d.T(), triggerNS, clients.desiredNamespace)
 		count++
 		return nil
 	})
 
-	err2 := testDefer.DeferFuncWithError(func(clients *testDeferContext) error {
+	err2 := testDefer.DeferFuncWithError(context.Background(), func(clients *testDeferContext) error {
 		require.Equal(d.T(), triggerNS, clients.desiredNamespace)
 		errCount++
 		return fmt.Errorf("fake error")
 	})
 
-	err3 := testDefer.DeferFuncWithError(func(clients *testDeferContext) error {
+	err3 := testDefer.DeferFuncWithError(context.Background(), func(clients *testDeferContext) error {
 		require.Equal(d.T(), triggerNS, clients.desiredNamespace)
 		count++
 		return nil

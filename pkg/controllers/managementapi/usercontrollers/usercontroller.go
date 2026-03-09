@@ -106,7 +106,6 @@ func (u *userControllersController) sync(key string, cluster *v3.Cluster) (*v3.C
 	if !v3.ClusterConditionProvisioned.IsTrue(cluster) {
 		return cluster, nil
 	}
-
 	if restartNeeded {
 		u.starter.Stop(cluster)
 	}

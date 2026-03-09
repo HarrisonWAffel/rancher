@@ -88,11 +88,21 @@ func (d *DeferredRegistration[T, I]) DeferFunc(f func(clients T)) {
 
 // DeferFuncWithError creates a new go routine which invokes f once the DeferredInitializer creates the client context.
 // It returns an error channel to indicate if f encountered any errors during execution.
-func (d *DeferredRegistration[T, I]) DeferFuncWithError(f func(wrangler T) error) chan error {
+func (d *DeferredRegistration[T, I]) DeferFuncWithError(ctx context.Context, f func(wrangler T) error) chan error {
 	logrus.Debugf("[%s - DeferFuncWithError] Adding function to pool: %s", d.Name, getFuncName(f))
 	errChan := make(chan error, 1)
 	d.DeferFunc(func(clients T) {
 		defer close(errChan)
+
+		// Don't invoke the deferred function if the context has
+		// already been canceled by the time the client
+		// context is initialized
+		select {
+		case <-ctx.Done():
+			errChan <- ctx.Err()
+			return
+		default:
+		}
 
 		if err := f(clients); err != nil {
 			errChan <- err

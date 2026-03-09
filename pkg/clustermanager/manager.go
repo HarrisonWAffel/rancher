@@ -158,9 +158,10 @@ func (m *Manager) startController(r *record, controllers, clusterOwner bool) err
 				logrus.Errorf("failed to start cluster controllers %s: %v", r.cluster.ClusterName, err)
 				m.markUnavailable(r.clusterRec.Name)
 				m.Stop(r.clusterRec)
+				return
 			}
 
-			errChan := m.ScaledContext.Wrangler.DeferredCAPIRegistration.DeferFuncWithError(func(capi *wrangler.CAPIContext) error {
+			errChan := m.ScaledContext.Wrangler.DeferredCAPIRegistration.DeferFuncWithError(r.ctx, func(capi *wrangler.CAPIContext) error {
 				logrus.Infof("[HERE!!!!!] starting capi for cluster controllers")
 				return m.doCAPIStart(r, clusterOwner, capi)
 			})

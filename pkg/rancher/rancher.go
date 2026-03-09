@@ -494,7 +494,7 @@ func (r *Rancher) Start(ctx context.Context) error {
 	})
 
 	r.Wrangler.OnLeaderOrDie("rancher-start::DefferedCAPIRegistration", func(ctx context.Context) error {
-		errChan := r.Wrangler.DeferredCAPIRegistration.DeferFuncWithError(runRKE2Migrations)
+		errChan := r.Wrangler.DeferredCAPIRegistration.DeferFuncWithError(ctx, runRKE2Migrations)
 		err, ok := <-errChan
 		if !ok {
 			return nil
