@@ -12,6 +12,7 @@ import (
 	"time"
 
 	fleet "github.com/rancher/fleet/pkg/apis/fleet.cattle.io/v1alpha1"
+	v3 "github.com/rancher/rancher/pkg/apis/management.cattle.io/v3"
 	"github.com/rancher/rancher/pkg/capr"
 	"github.com/rancher/rancher/pkg/features"
 	"github.com/rancher/rancher/pkg/generated/controllers/cluster.x-k8s.io/v1beta2"
@@ -23,11 +24,17 @@ import (
 	wranglerv1 "github.com/rancher/wrangler/v3/pkg/generated/controllers/core/v1"
 	"github.com/sirupsen/logrus"
 	v1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	capi "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+)
+
+const (
+	helmSecretSync = "autoscaler-helm-secret-sync"
 )
 
 // dynamicGetter defines the interface for the Get method from dynamic.Controller
@@ -100,6 +107,11 @@ func Register(ctx context.Context, clients *wrangler.CAPIContext) {
 	// only run the "create" handlers if autoscaling is enabled. otherwise only run the cleanup handler
 	// (in case the user disabled autoscaling after having it enabled
 	if !features.ClusterAutoscaling.Enabled() {
+		// Clean up the shared root helm-op secret in fleet-default, which is not covered
+		// by per-cluster cleanup since fleet-default secrets are shared.
+		if err := h.secretClient.Delete("fleet-default", autoscalerHelmSecretResourceName, &metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
+			logrus.Warnf("[autoscaler] failed to clean up root helm-op secret in fleet-default: %v", err)
+		}
 		clients.CAPI.Cluster().OnChange(ctx, "autoscaler-cleanup", h.ensureCleanup)
 		return
 	}
@@ -116,6 +128,21 @@ func Register(ctx context.Context, clients *wrangler.CAPIContext) {
 
 	clients.CAPI.Cluster().OnChange(ctx, "autoscaler-mgr", h.OnChange)
 	clients.Fleet.HelmOp().OnChange(ctx, "autoscaler-status-sync", h.syncHelmOpStatus)
+	clients.Mgmt.Setting().OnChange(ctx, helmSecretSync, h.syncRootHelmOpSecret)
+}
+
+// syncRootHelmOpSecret manages the canonical HelmOp secret in fleet-default, so that Fleet can
+// authenticate with the OCI registry containing the autoscaler chart. This handler is triggered
+// by changes to the SystemDefaultRegistryPullSecrets setting. The actual create/update/delete
+// logic is in ensureRootHelmOpSecret, which is also called as a fallback from
+// ensureHelmOpSecretInNamespace during cluster reconciliation.
+func (h *autoscalerHandler) syncRootHelmOpSecret(_ string, setting *v3.Setting) (*v3.Setting, error) {
+	if setting == nil || setting.Name != settings.SystemDefaultRegistryPullSecrets.Name {
+		return setting, nil
+	}
+
+	_, err := h.ensureRootHelmOpSecret()
+	return setting, err
 }
 
 // OnChange handles changes to CAPI clusters and manages autoscaler deployment.
@@ -227,7 +254,7 @@ func (h *autoscalerHandler) pauseAutoscaling(cluster *capi.Cluster) error {
 // is disabled or when the cluster is being deleted.
 // Returns a combined error if any cleanup operations fail.
 func (h *autoscalerHandler) handleUninstall(cluster *capi.Cluster) error {
-	return errors.Join(h.cleanupRBAC(cluster), h.cleanupFleet(cluster))
+	return errors.Join(h.cleanupRBAC(cluster), h.cleanupFleet(cluster), h.cleanupHelmSecrets(cluster))
 }
 
 // setupRBAC handles the complete RBAC setup for cluster autoscaling.

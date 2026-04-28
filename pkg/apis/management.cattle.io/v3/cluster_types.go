@@ -181,8 +181,9 @@ func (a *Answer) ObjClusterName() string {
 }
 
 type ImportedConfig struct {
-	KubeConfig         string `json:"kubeConfig" norman:"type=password"`
-	PrivateRegistryURL string `json:"privateRegistryURL,omitempty"`
+	KubeConfig                 string   `json:"kubeConfig" norman:"type=password"`
+	PrivateRegistryURL         string   `json:"privateRegistryURL,omitempty"`
+	PrivateRegistryPullSecrets []string `json:"privateRegistryPullSecret,omitempty"`
 }
 
 type ClusterStatus struct {
@@ -232,6 +233,7 @@ type ClusterStatus struct {
 	AADClientCertSecret        string                    `json:"aadClientCertSecret,omitempty" norman:"nocreate,noupdate"`   // Deprecated: use ClusterSpec.ClusterSecrets.AADClientCertSecret instead
 
 	AppliedClusterAgentDeploymentCustomization *AgentDeploymentCustomization `json:"appliedClusterAgentDeploymentCustomization,omitempty"`
+	AppliedClusterImagePullSecretHash          string                        `json:"appliedClusterImagePullSecretHash,omitempty"`
 }
 
 type ClusterComponentStatus struct {

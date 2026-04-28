@@ -3,6 +3,7 @@ package systemcharts
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"slices"
@@ -10,6 +11,7 @@ import (
 
 	catalog "github.com/rancher/rancher/pkg/apis/catalog.cattle.io/v1"
 	v3 "github.com/rancher/rancher/pkg/apis/management.cattle.io/v3"
+	"github.com/rancher/rancher/pkg/cluster"
 	"github.com/rancher/rancher/pkg/controllers/dashboard/chart"
 	"github.com/rancher/rancher/pkg/controllers/management/importedclusterversionmanagement"
 	"github.com/rancher/rancher/pkg/controllers/management/k3sbasedupgrade"
@@ -61,6 +63,7 @@ var (
 		settings.ShellImage.Name:                          {},
 		settings.SystemUpgradeControllerChartVersion.Name: {},
 		settings.ImportedClusterVersionManagement.Name:    {},
+		settings.SystemDefaultRegistryPullSecrets.Name:    {},
 	}
 	managedPlanSelector = labels.Set(map[string]string{k3sbasedupgrade.RancherManagedPlan: "true"}).AsSelector()
 )
@@ -85,6 +88,8 @@ func Register(ctx context.Context, wContext *wrangler.Context, registryOverride 
 	}
 
 	wContext.Catalog.ClusterRepo().OnChange(ctx, "bootstrap-charts", h.onRepo)
+
+	logrus.Infof("[SYSTEM-CHARTS] REGISTERING CHART BOOTSTRAP ONCHANGE FUNCTION")
 	relatedresource.WatchClusterScoped(ctx, "bootstrap-charts", relatedFeatures, wContext.Catalog.ClusterRepo(), wContext.Mgmt.Feature())
 
 	relatedresource.WatchClusterScoped(ctx, "bootstrap-settings-charts", relatedSettings, wContext.Catalog.ClusterRepo(), wContext.Mgmt.Setting())
@@ -121,44 +126,75 @@ type handler struct {
 	registryOverride               string
 }
 
-func (h *handler) onRepo(key string, repo *catalog.ClusterRepo) (*catalog.ClusterRepo, error) {
+func (h *handler) onRepo(_ string, repo *catalog.ClusterRepo) (*catalog.ClusterRepo, error) {
 	if repo == nil || repo.Name != repoName {
+		logrus.Infof("[SYSTEM-CHARTS] onRepo invoked, but not for the rancher repo: %s", repo.Name)
 		return repo, nil
 	}
 
-	systemGlobalRegistry := map[string]interface{}{
+	logrus.Infof("[SYSTEM-CHARTS] onRepo invoked for repo %q, beginning system chart reconciliation", repoName)
+
+	systemDefaultRegistry := map[string]interface{}{
 		"cattle": map[string]interface{}{
 			"systemDefaultRegistry": settings.SystemDefaultRegistry.Get(),
 		},
 	}
+	logrus.Infof("[SYSTEM-CHARTS] using systemDefaultRegistry=%q from settings", settings.SystemDefaultRegistry.Get())
+
 	if h.registryOverride != "" {
 		// if we have a specific image override, don't set the system default registry
 		// don't need to check for type assert since we just created this above
-		registryMap := systemGlobalRegistry["cattle"].(map[string]interface{})
+		registryMap := systemDefaultRegistry["cattle"].(map[string]interface{})
 		registryMap["systemDefaultRegistry"] = ""
-		systemGlobalRegistry["cattle"] = registryMap
+		systemDefaultRegistry["cattle"] = registryMap
+		logrus.Infof("[SYSTEM-CHARTS] registryOverride=%q is set; clearing systemDefaultRegistry so per-chart image overrides take precedence", h.registryOverride)
 	}
-	for _, chartDef := range h.getChartsToInstall() {
+
+	chartsToInstall := h.getChartsToInstall()
+	logrus.Infof("[SYSTEM-CHARTS] evaluating %d chart definition(s)", len(chartsToInstall))
+
+	for _, chartDef := range chartsToInstall {
+		logrus.Infof("[SYSTEM-CHARTS] processing chart %q (namespace=%q, release=%q, uninstall=%v)", chartDef.ChartName, chartDef.ReleaseNamespace, chartDef.ReleaseName, chartDef.Uninstall)
+
 		if chartDef.Uninstall {
+			logrus.Infof("[SYSTEM-CHARTS] chart %q is marked for uninstall; removing from desired state and uninstalling (removeNamespace=%v)", chartDef.ChartName, chartDef.RemoveNamespace)
 			// it is important to remove the chart from the desired chart list
 			h.manager.Remove(chartDef.ReleaseNamespace, chartDef.ChartName)
 			if err := h.manager.Uninstall(chartDef.ReleaseNamespace, chartDef.ChartName); err != nil {
+				logrus.Infof("[SYSTEM-CHARTS] failed to uninstall chart %q: %v", chartDef.ChartName, err)
 				return repo, err
 			}
 			if chartDef.RemoveNamespace {
+				logrus.Infof("[SYSTEM-CHARTS] deleting namespace %q after uninstalling chart %q", chartDef.ReleaseNamespace, chartDef.ChartName)
 				if err := h.namespaces.Delete(chartDef.ReleaseNamespace, nil); err != nil && !errors.IsNotFound(err) {
+					logrus.Infof("[SYSTEM-CHARTS] failed to delete namespace %q: %v", chartDef.ReleaseNamespace, err)
 					return repo, err
 				}
 			}
 			continue
 		}
+
 		if chartDef.Enabled != nil && !chartDef.Enabled() {
+			logrus.Infof("[SYSTEM-CHARTS] chart %q is disabled by its Enabled() check; skipping installation", chartDef.ChartName)
 			continue
 		}
 
-		values := map[string]interface{}{
-			"global": systemGlobalRegistry,
+		registry, _ := cluster.GetPrivateRegistry(nil)
+		var pullSecrets []string
+		if registry != nil {
+			pullSecrets = registry.PullSecretNamesAsSlice()
+			logrus.Infof("[SYSTEM-CHARTS] resolved registry configuration: url=%q pullSecrets=%v", registry.URL, pullSecrets)
+		} else {
+			logrus.Infof("[SYSTEM-CHARTS] no default registry configuration found for chart %q; proceeding without pull secrets", chartDef.ChartName)
 		}
+
+		logrus.Infof("[SYSTEM-CHARTS] setting global.cattle.imagePullSecrets=%v for chart %q", pullSecrets, chartDef.ChartName)
+		systemDefaultRegistry["cattle"].(map[string]interface{})["imagePullSecrets"] = pullSecrets
+
+		values := map[string]interface{}{
+			"global": systemDefaultRegistry,
+		}
+
 		var installImageOverride string
 		if h.registryOverride != "" {
 			imageSettings, ok := values["image"].(map[string]interface{})
@@ -168,24 +204,45 @@ func (h *handler) onRepo(key string, repo *catalog.ClusterRepo) (*catalog.Cluste
 			if image, ok := primaryImages[chartDef.ChartName]; ok {
 				imageSettings["repository"] = h.registryOverride + "/" + image
 				values["image"] = imageSettings
+				logrus.Infof("[SYSTEM-CHARTS] overriding image repository for chart %q to %q", chartDef.ChartName, imageSettings["repository"])
+			} else {
+				logrus.Infof("[SYSTEM-CHARTS] no primary image mapping found for chart %q; skipping image repository override", chartDef.ChartName)
 			}
 			installImageOverride = h.registryOverride + "/" + settings.ShellImage.Get()
+			logrus.Infof("[SYSTEM-CHARTS] using installImageOverride=%q for chart %q", installImageOverride, chartDef.ChartName)
 		}
+
 		if chartDef.Values != nil {
-			for k, v := range chartDef.Values() {
+			chartSpecificValues := chartDef.Values()
+			logrus.Infof("[SYSTEM-CHARTS] merging %d chart-specific value key(s) for chart %q", len(chartSpecificValues), chartDef.ChartName)
+			for k, v := range chartSpecificValues {
 				values[k] = v
 			}
+		} else {
+			logrus.Infof("[SYSTEM-CHARTS] no chart-specific Values() function defined for chart %q", chartDef.ChartName)
 		}
+
+		if valuesJSON, err := json.Marshal(values); err != nil {
+			logrus.Warnf("[SYSTEM-CHARTS] failed to marshal values for chart %q: %v", chartDef.ChartName, err)
+		} else {
+			logrus.Infof("[SYSTEM-CHARTS] ensuring chart %q (namespace=%q, release=%q) with values: %s",
+				chartDef.ChartName, chartDef.ReleaseNamespace, chartDef.ReleaseName, string(valuesJSON))
+		}
+
 		// webhook needs to be able to adopt the MutatingWebhookConfiguration which originally wasn't a part of the
 		// chart definition, but is now part of the chart definition
 		minVersion := chartDef.MinVersionSetting.Get()
 		exactVersion := chartDef.ExactVersionSetting.Get()
 		takeOwnership := chartDef.ChartName == chart.WebhookChartName
+		logrus.Infof("[SYSTEM-CHARTS] calling Ensure for chart %q: minVersion=%q, exactVersion=%q, takeOwnership=%v", chartDef.ChartName, minVersion, exactVersion, takeOwnership)
 		if err := h.manager.Ensure(chartDef.ReleaseNamespace, chartDef.ChartName, chartDef.ReleaseName, minVersion, exactVersion, values, takeOwnership, installImageOverride); err != nil {
+			logrus.Infof("[SYSTEM-CHARTS] Ensure failed for chart %q: %v", chartDef.ChartName, err)
 			return repo, err
 		}
+		logrus.Infof("[SYSTEM-CHARTS] successfully ensured chart %q in namespace %q", chartDef.ChartName, chartDef.ReleaseNamespace)
 	}
 
+	logrus.Infof("[SYSTEM-CHARTS] system chart reconciliation complete for repo %q", repoName)
 	return repo, nil
 }
 
@@ -200,6 +257,15 @@ func (h *handler) getChartsToInstall() []*chart.Definition {
 				values := map[string]interface{}{}
 				// add priority class value
 				h.setPriorityClass(values, chart.RemoteDialerProxyChartName)
+
+				// unlike other charts the remotedialer proxy chart specifies imagePullSecrets at the top level
+				registry, _ := cluster.GetPrivateRegistry(nil)
+				if registry != nil {
+					if len(registry.PullSecrets) > 0 {
+						values["imagePullSecrets"] = registry.PullSecretsAsObjectReferences()
+					}
+				}
+
 				return values
 			},
 			Enabled: func() bool {
@@ -227,6 +293,7 @@ func (h *handler) getChartsToInstall() []*chart.Definition {
 						"enabled": features.MCM.Enabled(),
 					},
 				}
+
 				// add priority class value
 				h.setPriorityClass(values, chart.WebhookChartName)
 				// get custom values for the rancher-webhook
@@ -263,6 +330,15 @@ func (h *handler) getChartsToInstall() []*chart.Definition {
 						},
 					},
 				}
+
+				// unlike other charts the turtles chart specifies imagePullSecrets at the top level
+				registry, _ := cluster.GetPrivateRegistry(nil)
+				if registry != nil {
+					if len(registry.PullSecrets) > 0 {
+						values["imagePullSecrets"] = registry.PullSecretNamesAsSlice()
+					}
+				}
+
 				// add priority class value
 				h.setPriorityClass(values, chart.TurtlesChartName)
 				// get custom values for rancher-turtles

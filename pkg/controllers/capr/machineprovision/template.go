@@ -241,6 +241,12 @@ func objects(ready bool, args driverArgs) []runtime.Object {
 		},
 	}
 
+	if len(args.ImagePullSecrets) > 0 {
+		for _, s := range args.ImagePullSecrets {
+			job.Spec.Template.Spec.ImagePullSecrets = append(job.Spec.Template.Spec.ImagePullSecrets, corev1.LocalObjectReference{Name: s})
+		}
+	}
+
 	return []runtime.Object{
 		args.EnvSecret,
 		secret,

@@ -9,6 +9,9 @@ replace (
 	github.com/docker/distribution => github.com/docker/distribution v2.8.2+incompatible // rancher-machine requires a replace is set
 	github.com/knative/pkg => github.com/rancher/pkg v0.0.0-20190514055449-b30ab9de040e
 	github.com/matryer/moq => github.com/rancher/moq v0.0.0-20200712062324-13d1f37d2d77
+	//github.com/rancher/fleet/pkg/apis => /Users/haffel/fork/fleet/pkg/apis //
+	github.com/rancher/fleet/pkg/apis => github.com/harrisonwaffel/fleet/pkg/apis v0.10.0-rc.21.0.20260413144322-19bb3c61565b
+
 	github.com/rancher/rancher/pkg/apis => ./pkg/apis
 	github.com/rancher/rancher/pkg/client => ./pkg/client
 	github.com/stretchr/testify => github.com/stretchr/testify v1.10.0
@@ -157,9 +160,9 @@ require (
 	gopkg.in/yaml.v2 v2.4.0
 	gopkg.in/yaml.v3 v3.0.1
 	helm.sh/helm/v3 v3.20.0
-	k8s.io/api v0.35.1
+	k8s.io/api v0.35.2
 	k8s.io/apiextensions-apiserver v0.35.1
-	k8s.io/apimachinery v0.35.1
+	k8s.io/apimachinery v0.35.2
 	k8s.io/apiserver v0.35.1
 	k8s.io/cli-runtime v0.35.1
 	k8s.io/client-go v12.0.0+incompatible

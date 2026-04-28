@@ -5,7 +5,10 @@ go 1.25.0
 toolchain go1.25.7
 
 replace (
+	github.com/rancher/fleet/pkg/apis => github.com/harrisonwaffel/fleet/pkg/apis v0.10.0-rc.21.0.20260413144322-19bb3c61565b
+
 	k8s.io/api => k8s.io/api v0.35.1
+
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.35.1
 	k8s.io/apimachinery => k8s.io/apimachinery v0.35.1
 	k8s.io/apiserver => k8s.io/apiserver v0.35.1
@@ -45,8 +48,8 @@ require (
 	github.com/rancher/wrangler/v3 v3.5.0-rc.2
 	github.com/sirupsen/logrus v1.9.4
 	github.com/stretchr/testify v1.11.1
-	k8s.io/api v0.35.1
-	k8s.io/apimachinery v0.35.1
+	k8s.io/api v0.35.2
+	k8s.io/apimachinery v0.35.2
 	sigs.k8s.io/cluster-api v1.12.2
 )
 

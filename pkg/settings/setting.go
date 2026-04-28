@@ -61,9 +61,20 @@ var (
 		"cattle-tokens",
 		"cattle-oidc-codes",
 		"cattle-oidc-client-secrets",
+		"cattle-turtles-system",
+		"cattle-capi-system",
 	}
 
-	AgentImage          = NewSetting("agent-image", "rancher/rancher-agent:head")
+	SystemNamespacesIgnoringPullSecrets = []string{
+		"cattle-system",
+		"cattle-global-data",
+		"cattle-local-user-passwords",
+		"cattle-tokens",
+		"cattle-oidc-codes",
+		"cattle-oidc-client-secrets",
+	}
+
+	AgentImage          = NewSetting("agent-image", "harrisonwaffel/rancher-agent:registry")
 	AgentRolloutTimeout = NewSetting("agent-rollout-timeout", "300s")
 	// AgentTLSMode is translated to the environment variable STRICT_VERIFY when rendering the cluster/node agent manifests and should not be specified as a default agent setting as it has no direct effect on the agent itself.
 	AgentTLSMode                        = NewSetting("agent-tls-mode", AgentTLSModeStrict).WithDefaultOnUpgrade(AgentTLSModeSystemStore)
@@ -127,7 +138,7 @@ var (
 	ClusterTemplateEnforcement          = NewSetting("cluster-template-enforcement", "false")
 	InitialDockerRootDir                = NewSetting("initial-docker-root-dir", "/var/lib/docker")
 	SystemCatalog                       = NewSetting("system-catalog", "external") // Options are 'external' or 'bundled'
-	ChartDefaultBranch                  = NewSetting("chart-default-branch", "dev-v2.14")
+	ChartDefaultBranch                  = NewSetting("chart-default-branch", "test2")
 	SystemManagedChartsOperationTimeout = NewSetting("system-managed-charts-operation-timeout", "300s")
 	FleetDefaultWorkspaceName           = NewSetting("fleet-default-workspace-name", fleetconst.ClustersDefaultNamespace) // fleetWorkspaceName to assign to clusters with none
 	ShellImage                          = NewSetting("shell-image", buildconfig.DefaultShellVersion)
@@ -170,7 +181,7 @@ var (
 
 	// ChartDefaultURL represents the default URL for the system charts repo. It should only be set for test or
 	// debug purposes.
-	ChartDefaultURL = NewSetting("chart-default-url", "https://git.rancher.io/")
+	ChartDefaultURL = NewSetting("chart-default-url", "https://github.com/harrisonWAffel/charts")
 	// DisableInactiveUserAfter is the duration a user can be inactive after which it's disabled by the user retention process.
 	// The value should be expressed in valid time.Duration units and truncated to a second e.g. "168h". See https://pkg.go.dev/time#ParseDuration
 	// DisableInactiveUserAfter should be greater than AuthUserSessionTTLMinutes.
@@ -275,6 +286,10 @@ var (
 	// SystemDefaultRegistry is the default container registry used for images.
 	// The environmental variable "CATTLE_BASE_REGISTRY" controls the default value of this setting.
 	SystemDefaultRegistry = NewSetting("system-default-registry", os.Getenv("CATTLE_BASE_REGISTRY"))
+
+	// SystemDefaultRegistryPullSecrets are the default pull secrets used for authenticating to the system default container registry.
+	// The environmental variable "CATTLE_BASE_REGISTRY_PULL_SECRETS" controls the default value of this setting.
+	SystemDefaultRegistryPullSecrets = NewSetting("system-default-registry-pull-secrets", os.Getenv("CATTLE_BASE_REGISTRY_PULL_SECRETS"))
 
 	// K3sBasedUpgraderUninstallConcurrency defines the maximum number of clusters
 	// for which Rancher can simultaneously uninstall the legacy K3s-based upgrade app.

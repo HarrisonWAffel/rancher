@@ -110,6 +110,9 @@ type RepoSpec struct {
 	// Defaults to false, which keeps the SameOrigin check enabled. Setting this to true is not recommended
 	// in production environments due to the security implications.
 	DisableSameOriginCheck bool `json:"disableSameOriginCheck,omitempty"`
+
+	// DefaultImagePullSecrets
+	DefaultImagePullSecrets []SecretReference `json:"defaultImagePullSecrets,omitempty"`
 }
 
 type RepoCondition string

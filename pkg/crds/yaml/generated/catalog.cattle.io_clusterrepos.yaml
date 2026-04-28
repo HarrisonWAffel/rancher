@@ -84,6 +84,20 @@ spec:
                     description: Namespace is the namespace where the secret resides.
                     type: string
                 type: object
+              defaultImagePullSecrets:
+                description: DefaultImagePullSecrets
+                items:
+                  description: SecretReference references a Secret object which contains
+                    the credentials.
+                  properties:
+                    name:
+                      description: Name is the name of the secret.
+                      type: string
+                    namespace:
+                      description: Namespace is the namespace where the secret resides.
+                      type: string
+                  type: object
+                type: array
               disableSameOriginCheck:
                 description: |-
                   DisableSameOriginCheck if true attaches the Basic Auth Header to all Helm client API calls

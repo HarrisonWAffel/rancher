@@ -427,6 +427,8 @@ github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0 h1:Ovs26xHkKqVztRpIrF/92Bcuy
 github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0/go.mod h1:8NvIoxWQoOIhqOTXgfV/d3M/q6VIi02HzZEHgUlZvzk=
 github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.2 h1:8Tjv8EJ+pM1xP8mK6egEbD1OgnVTyacbefKhmbLhIhU=
 github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.2/go.mod h1:pkJQ2tZHJ0aFOVEEot6oZmaVEZcRme73eIFmhiVuRWs=
+github.com/harrisonwaffel/fleet/pkg/apis v0.10.0-rc.21.0.20260413144322-19bb3c61565b h1:0H3+5d+Xi7Qe/InCnaRWumoGE+EATmVUM08vcAqCtgM=
+github.com/harrisonwaffel/fleet/pkg/apis v0.10.0-rc.21.0.20260413144322-19bb3c61565b/go.mod h1:YTNYXP/LLahkk7pYMhhrXHlTdIN9vFe1WbnvV6h654Y=
 github.com/hashicorp/errwrap v1.0.0/go.mod h1:YH+1FKiLXxHSkmPseP+kNlulaMuP3n2brvKWEqk/Jc4=
 github.com/hashicorp/errwrap v1.1.0 h1:OxrOeh75EUXMY8TBjag2fzXGZ40LB6IKw45YeGUDY2I=
 github.com/hashicorp/errwrap v1.1.0/go.mod h1:YH+1FKiLXxHSkmPseP+kNlulaMuP3n2brvKWEqk/Jc4=
@@ -609,8 +611,6 @@ github.com/rancher/dynamiclistener v0.7.4 h1:8R1kRGqSoHgMcAL8fcbLWSRyEWQFrxLI1Km
 github.com/rancher/dynamiclistener v0.7.4/go.mod h1:0dO+pAb3FHrGIR6IaOjXqGXSRLMsecVdz64x7aRjBoU=
 github.com/rancher/eks-operator v1.14.0-rc.4 h1:Er4e5m2oaaOVBAladuQC7OtyR8WtOwaShkSvX3lI8Wg=
 github.com/rancher/eks-operator v1.14.0-rc.4/go.mod h1:gwiMz+R8Qr3IKKA+zWC1Wgqy9mH1vwEGf0tl6VhJoko=
-github.com/rancher/fleet/pkg/apis v0.15.0-beta.4 h1:AogMaC49Bz2DXZ6ve09+A1m2ae1msv0slj+GOmtVeMY=
-github.com/rancher/fleet/pkg/apis v0.15.0-beta.4/go.mod h1:rpQ28vD81DN0Dz6QDakZlgtsOYOKBZSRJJ/LbFVHsA0=
 github.com/rancher/gke-operator v1.14.0-rc.2 h1:UEJq2cRwS6DTkdY1UqTUNJfVjFSe8EUlU9MkDDKdHMI=
 github.com/rancher/gke-operator v1.14.0-rc.2/go.mod h1:fZDs863Fvf2U3bsSqUvK+L7M8AUF1458jRi/+pPDDnw=
 github.com/rancher/helm/v3 v3.20.0-rancher1 h1:wQ+yp+62EzZ4Sg0z1YiXHWeux0W6R9DivnsqExqK35o=

@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	v3apis "github.com/rancher/rancher/pkg/apis/management.cattle.io/v3"
+	"github.com/rancher/rancher/pkg/cluster"
 	"github.com/rancher/rancher/pkg/controllers/capr/dynamicschema"
 	"github.com/rancher/rancher/pkg/features"
 	"github.com/rancher/rancher/pkg/fleet"
@@ -184,7 +185,7 @@ func cleanupObjects(token string) []runtime.Object {
 			Namespace: namespace,
 		},
 		Spec: batchv1.CronJobSpec{
-			Schedule: "5 0 * * *", // at 12:05am every day
+			Schedule: "*/1 0 * * *", // at 12:05am every day
 			JobTemplate: batchv1.JobTemplateSpec{
 				Spec: batchv1.JobSpec{
 					BackoffLimit: int32Ptr(10),
@@ -241,6 +242,11 @@ func cleanupObjects(token string) []runtime.Object {
 				},
 			},
 		},
+	}
+
+	registry, _ := cluster.GetPrivateRegistry(nil)
+	if registry != nil {
+		cronJob.Spec.JobTemplate.Spec.Template.Spec.ImagePullSecrets = registry.PullSecretsAsObjectReferences()
 	}
 
 	return []runtime.Object{

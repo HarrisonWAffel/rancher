@@ -1,9 +1,12 @@
 package dashboard
 
 import (
+	"slices"
 	"strings"
 
+	"github.com/rancher/rancher/pkg/cluster"
 	"github.com/rancher/rancher/pkg/features"
+	namespaces "github.com/rancher/rancher/pkg/namespace"
 	"github.com/sirupsen/logrus"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 
@@ -20,7 +23,7 @@ var (
 	prefix = "rancher-"
 )
 
-func addRepo(wrangler *wrangler.Context, repoName, repoURL, branchName string) error {
+func addRepo(wrangler *wrangler.Context, repoName, repoURL, branchName string, defaultPullSecrets []string) error {
 	if repoURL == "" || repoURL == defaultURL {
 		repoURL = defaultURL + strings.TrimPrefix(repoName, prefix)
 	} else {
@@ -33,6 +36,14 @@ func addRepo(wrangler *wrangler.Context, repoName, repoURL, branchName string) e
 		)
 	}
 
+	var secretReferences []v1.SecretReference
+	for _, secret := range defaultPullSecrets {
+		secretReferences = append(secretReferences, v1.SecretReference{
+			Name:      secret,
+			Namespace: namespaces.System,
+		})
+	}
+
 	repo, err := wrangler.Catalog.ClusterRepo().Get(repoName, metav1.GetOptions{})
 	if apierrors.IsNotFound(err) {
 		_, err = wrangler.Catalog.ClusterRepo().Create(&v1.ClusterRepo{
@@ -40,13 +51,15 @@ func addRepo(wrangler *wrangler.Context, repoName, repoURL, branchName string) e
 				Name: repoName,
 			},
 			Spec: v1.RepoSpec{
-				GitRepo:   repoURL,
-				GitBranch: branchName,
+				GitRepo:                 repoURL,
+				GitBranch:               branchName,
+				DefaultImagePullSecrets: secretReferences,
 			},
 		})
-	} else if err == nil && (repo.Spec.GitRepo != repoURL || repo.Spec.GitBranch != branchName) {
+	} else if err == nil && (repo.Spec.GitRepo != repoURL || repo.Spec.GitBranch != branchName || !slices.Equal(repo.Spec.DefaultImagePullSecrets, secretReferences)) {
 		repo.Spec.GitRepo = repoURL
 		repo.Spec.GitBranch = branchName
+		repo.Spec.DefaultImagePullSecrets = secretReferences
 		_, err = wrangler.Catalog.ClusterRepo().Update(repo)
 	}
 
@@ -55,11 +68,17 @@ func addRepo(wrangler *wrangler.Context, repoName, repoURL, branchName string) e
 
 // addRepos upserts the rancher-charts, rancher-partner-charts and rancher-rke2-charts ClusterRepos
 func addRepos(wrangler *wrangler.Context) error {
+	registry, _ := cluster.GetPrivateRegistry(nil)
+	var pullSecrets []string
+	if registry != nil {
+		pullSecrets = registry.PullSecretNamesAsSlice()
+	}
+
 	if err := addRepo(
 		wrangler,
 		"rancher-charts",
 		settings.ChartDefaultURL.Get(),
-		settings.ChartDefaultBranch.Get(),
+		settings.ChartDefaultBranch.Get(), pullSecrets,
 	); err != nil {
 		return err
 	}
@@ -68,7 +87,7 @@ func addRepos(wrangler *wrangler.Context) error {
 		wrangler,
 		"rancher-partner-charts",
 		settings.PartnerChartDefaultURL.Get(),
-		settings.PartnerChartDefaultBranch.Get(),
+		settings.PartnerChartDefaultBranch.Get(), nil,
 	); err != nil {
 		return err
 	}
@@ -78,7 +97,7 @@ func addRepos(wrangler *wrangler.Context) error {
 			wrangler,
 			"rancher-rke2-charts",
 			settings.RKE2ChartDefaultURL.Get(),
-			settings.RKE2ChartDefaultBranch.Get(),
+			settings.RKE2ChartDefaultBranch.Get(), nil,
 		); err != nil {
 			return err
 		}

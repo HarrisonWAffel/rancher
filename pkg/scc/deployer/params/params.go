@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"maps"
 
+	"github.com/rancher/rancher/pkg/cluster"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -131,7 +132,10 @@ func (p *SCCOperatorParams) PrepareDeployment() *appsv1.Deployment {
 
 	// TODO: We should support the "extra tolerations" feature users are asking for
 	// ref: https://github.com/rancher/rancher/issues/48541
-	return &appsv1.Deployment{
+
+	// TODO: We need to use the global image pull secrets.
+	//		 Didn't Dan say they would handle this?
+	dep := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: consts.DefaultSCCNamespace,
 			Name:      consts.DeploymentName,
@@ -150,6 +154,13 @@ func (p *SCCOperatorParams) PrepareDeployment() *appsv1.Deployment {
 			},
 		},
 	}
+
+	registry, _ := cluster.GetPrivateRegistry(nil)
+	if registry != nil && len(registry.PullSecrets) > 0 {
+		dep.Spec.Template.Spec.ImagePullSecrets = append(dep.Spec.Template.Spec.ImagePullSecrets, registry.PullSecretsAsObjectReferences()...)
+	}
+
+	return dep
 }
 
 func (p *SCCOperatorParams) preparePodSpec() corev1.PodSpec {

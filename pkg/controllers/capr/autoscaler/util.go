@@ -17,6 +17,22 @@ import (
 	capi "sigs.k8s.io/cluster-api/api/core/v1beta2"
 )
 
+const (
+	autoscalerHelmSecretResourceName   = "autoscaler-helm-secret"
+	autoscalerChartImagePullSecretName = "autoscaler-chart-image-pull-secret"
+)
+
+func helmOpSecretName(cluster *capi.Cluster) string {
+	if cluster.Namespace == "fleet-default" {
+		return autoscalerHelmSecretResourceName
+	}
+	return name.SafeConcatName(autoscalerHelmSecretResourceName, cluster.Name)
+}
+
+func autoscalerClusterScopedImagePullSecretName(cluster *capi.Cluster) string {
+	return name.SafeConcatName(autoscalerChartImagePullSecretName, cluster.Name)
+}
+
 // autoscalerUserName generates the autoscaler-specific name for a cluster
 func autoscalerUserName(cluster *capi.Cluster) string {
 	return name.SafeConcatName(cluster.Namespace, cluster.Name, "autoscaler")

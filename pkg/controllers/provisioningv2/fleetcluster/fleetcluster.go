@@ -50,15 +50,16 @@ func (g fleetHostGetter) GetClusterHost(cfg clientcmd.ClientConfig) (string, []b
 }
 
 type handler struct {
-	clientConfig      clientcmd.ClientConfig
-	clusters          v3.ClusterClient
-	clustersCache     v3.ClusterCache
-	hostGetter        ClusterHostGetter
-	secretsController corecontrollers.SecretController
-	nodesController   corecontrollers.NodeController
-	fleetClusters     fleetcontrollers.ClusterController
-	apply             apply.Apply
-	getPrivateRepoURL func(*provv1.Cluster, *apimgmtv3.Cluster) string
+	clientConfig              clientcmd.ClientConfig
+	clusters                  v3.ClusterClient
+	clustersCache             v3.ClusterCache
+	hostGetter                ClusterHostGetter
+	secretsController         corecontrollers.SecretController
+	nodesController           corecontrollers.NodeController
+	fleetClusters             fleetcontrollers.ClusterController
+	apply                     apply.Apply
+	getPrivateRepoURL         func(*provv1.Cluster, *apimgmtv3.Cluster) string
+	getPrivateRepoPullSecrets func(*apimgmtv3.Cluster) []string
 }
 
 // Register registers the fleetcluster controller, which is responsible for creating fleet cluster objects.
@@ -86,6 +87,14 @@ func Register(ctx context.Context, clients *wrangler.Context) {
 			return mgmtcluster.GetPrivateRegistryURL(mgmtCluster)
 		}
 		return image.GetPrivateRepoURLFromCluster(cluster)
+	}
+
+	h.getPrivateRepoPullSecrets = func(mgmtCluster *apimgmtv3.Cluster) []string {
+		registry, _ := mgmtcluster.GetPrivateRegistry(mgmtCluster)
+		if registry == nil {
+			return nil
+		}
+		return registry.PullSecretNamesAsSlice()
 	}
 
 	rocontrollers.RegisterClusterGeneratingHandler(ctx,
@@ -278,6 +287,7 @@ func (h *handler) createCluster(cluster *provv1.Cluster, status provv1.ClusterSt
 			AgentEnvVars:                 mgmtCluster.Spec.AgentEnvVars,
 			AgentNamespace:               agentNamespace,
 			PrivateRepoURL:               h.getPrivateRepoURL(cluster, mgmtCluster),
+			PrivateRepoPullSecrets:       h.getPrivateRepoPullSecrets(mgmtCluster),
 			AgentTolerations:             tolerations,
 			AgentAffinity:                agentAffinity,
 			AgentResources:               mgmtcluster.GetFleetAgentResourceRequirements(mgmtCluster),

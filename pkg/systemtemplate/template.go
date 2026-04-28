@@ -89,18 +89,18 @@ data:
 
 ---
 
-{{- if .PrivateRegistryConfig}}
+{{- range .AllPullSecrets}}
 apiVersion: v1
 kind: Secret
 metadata:
-  name: cattle-private-registry
+  name: {{.Name}}
   namespace: cattle-system
 type: kubernetes.io/dockerconfigjson
 data:
-  .dockerconfigjson: "{{.PrivateRegistryConfig}}"
+  .dockerconfigjson: "{{.DockerConfigJSON}}"
 
 ---
-{{- end }}
+{{- end}}
 
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -205,7 +205,7 @@ spec:
             value: "true"
           - name: CATTLE_K8S_MANAGED
             value: "true"
-          - name: CATTLE_CLUSTER_REGISTRY
+          - name: CATTLE_SYSTEM_DEFAULT_REGISTRY
             value: "{{.ClusterRegistry}}"
           - name: CATTLE_CREDENTIAL_NAME
             value: cattle-credentials-{{.TokenKey}}
@@ -218,6 +218,10 @@ spec:
           {{- if .IsPreBootstrap }}
           # since we're on the host network, talk to the apiserver over localhost
           {{- end }}
+          {{- if .SystemDefaultPullSecrets}}
+          - name: CATTLE_SYSTEM_DEFAULT_REGISTRY_PULL_SECRETS
+            value: "{{range $i, $s := .SystemDefaultPullSecrets}}{{if $i}},{{end}}{{$s.Name}}{{end}}"
+          {{- end}}
       {{- if .AgentEnvVars}}
 {{ .AgentEnvVars | indent 10 }}
       {{- end }}
@@ -226,10 +230,12 @@ spec:
           - name: cattle-credentials
             mountPath: /cattle-credentials
             readOnly: true
-      {{- if .PrivateRegistryConfig}}
+      {{- if .AgentDeploymentPullSecrets}}
       imagePullSecrets:
-      - name: cattle-private-registry
-      {{- end }}
+      {{- range .AgentDeploymentPullSecrets}}
+      - name: {{.Name}}
+      {{- end}}
+      {{- end}}
       {{- if .IsPreBootstrap }}
       # use hostNetwork since the CNI (and coreDNS) is not up yet
       hostNetwork: true
@@ -296,10 +302,12 @@ spec:
         volumeMounts:
         - name: k8s-ssl
           mountPath: /etc/kubernetes
-      {{- if .PrivateRegistryConfig}}
+      {{- if .SystemDefaultPullSecrets}}
       imagePullSecrets:
-      - name: cattle-private-registry
-      {{- end }}
+      {{- range .SystemDefaultPullSecrets}}
+      - name: {{.Name}}
+      {{- end}}
+      {{- end}}
       volumes:
       - name: k8s-ssl
         hostPath:

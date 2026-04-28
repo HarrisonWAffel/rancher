@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/rancher/rancher/pkg/cluster"
 	"github.com/rancher/rancher/pkg/controllers/management/drivers/nodedriver"
 	"github.com/rancher/wrangler/v3/pkg/data"
 	"github.com/rancher/wrangler/v3/pkg/data/convert"
@@ -62,6 +63,7 @@ type driverArgs struct {
 
 	DriverName          string
 	ImageName           string
+	ImagePullSecrets    []string
 	CapiMachineName     string
 	MachineName         string
 	MachineNamespace    string
@@ -176,6 +178,13 @@ func (h *handler) getArgsEnvAndStatus(infra *infraObject, args map[string]any, d
 
 	cmd = append(cmd, instanceName)
 
+	registry, _ := cluster.GetPrivateRegistry(nil)
+	var pullSecrets []string
+
+	if registry != nil && len(registry.PullSecrets) > 0 {
+		pullSecrets = registry.PullSecretNamesAsSlice()
+	}
+
 	return driverArgs{
 		DriverName:          driver,
 		CapiMachineName:     machineName,
@@ -184,6 +193,7 @@ func (h *handler) getArgsEnvAndStatus(infra *infraObject, args map[string]any, d
 		MachineGVK:          infra.obj.GetObjectKind().GroupVersionKind(),
 		ImageName:           settings.PrefixPrivateRegistry(settings.MachineProvisionImage.Get()),
 		ImagePullPolicy:     settings.GetMachineProvisionImagePullPolicy(),
+		ImagePullSecrets:    pullSecrets,
 		EnvSecret:           envSecret,
 		FilesSecret:         filesSecret,
 		CertsSecret:         certsSecret,

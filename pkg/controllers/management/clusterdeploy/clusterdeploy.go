@@ -3,6 +3,8 @@ package clusterdeploy
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"reflect"
 	"regexp"
@@ -10,13 +12,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/rancher/rancher/pkg/capr"
-	"github.com/rancher/rancher/pkg/namespace"
-
 	"github.com/pkg/errors"
 	"github.com/rancher/norman/types"
 	apimgmtv3 "github.com/rancher/rancher/pkg/apis/management.cattle.io/v3"
 	"github.com/rancher/rancher/pkg/auth/tokens"
+	"github.com/rancher/rancher/pkg/capr"
 	util "github.com/rancher/rancher/pkg/cluster"
 	"github.com/rancher/rancher/pkg/clustermanager"
 	"github.com/rancher/rancher/pkg/controllers/managementuser/healthsyncer"
@@ -25,6 +25,7 @@ import (
 	v3 "github.com/rancher/rancher/pkg/generated/norman/management.cattle.io/v3"
 	"github.com/rancher/rancher/pkg/image"
 	"github.com/rancher/rancher/pkg/kubectl"
+	"github.com/rancher/rancher/pkg/namespace"
 	"github.com/rancher/rancher/pkg/settings"
 	"github.com/rancher/rancher/pkg/systemaccount"
 	"github.com/rancher/rancher/pkg/systemtemplate"
@@ -389,6 +390,33 @@ func (cd *clusterDeploy) ensurePriorityClass(cluster *apimgmtv3.Cluster, kubeCon
 	return false, fmt.Errorf("clusterDeploy: error encountered querying downstream priority class: %w", err)
 }
 
+// manageImagePullSecretHash generates a hash of the contents of the image pull secrets configured
+// on the cluster and compares it to the hash stored in the cluster status. The has is generated using the
+// secrets name and observed resource version. The hash indicates when one or more secrets used by the cluster need
+// to be copied downstream to stay up to date with the version in the local cluster.
+func (cd *clusterDeploy) manageImagePullSecretHash(cluster *apimgmtv3.Cluster) (string, bool, error) {
+	registry, _ := util.GetPrivateRegistry(cluster)
+	if registry != nil && len(registry.PullSecrets) != 0 {
+		var fullContents []string
+		for _, pullSecret := range registry.PullSecrets {
+			s, err := cd.secretLister.Get(pullSecret.Namespace, pullSecret.Name)
+			if err != nil {
+				logrus.Errorf("failed to retrieve secret [%s]: %v", pullSecret.Name, err)
+				continue
+			}
+			fullContents = append(fullContents, fmt.Sprintf("%s=%s", s.Name, s.ResourceVersion))
+		}
+		hashBytes := sha256.Sum256([]byte(strings.Join(fullContents, ",")))
+		hash := hex.EncodeToString(hashBytes[:])
+		if hash != cluster.Status.AppliedClusterImagePullSecretHash {
+			logrus.Infof("clusterDeploy: redeployAgent: returning true due to secret resource version hash change")
+			return hash, true, nil
+		}
+		return hash, false, nil
+	}
+	return "", false, nil
+}
+
 func (cd *clusterDeploy) deployAgent(cluster *apimgmtv3.Cluster) error {
 	if cluster.Spec.Internal {
 		return nil
@@ -411,8 +439,13 @@ func (cd *clusterDeploy) deployAgent(cluster *apimgmtv3.Cluster) error {
 		return err
 	}
 
+	pullSecretHash, hashChanged, err := cd.manageImagePullSecretHash(cluster)
+	if err != nil {
+		return err
+	}
+
 	shouldRedeployAgent := redeployAgent(cluster, desiredAgent, desiredAuth, desiredFeatures, desiredTaints)
-	agentManifestChanged := shouldRedeployAgent || pcDeleted || pcCreated
+	agentManifestChanged := shouldRedeployAgent || pcDeleted || pcCreated || hashChanged
 	if !agentManifestChanged && !pcChanged {
 		return nil
 	}
@@ -515,6 +548,7 @@ func (cd *clusterDeploy) deployAgent(cluster *apimgmtv3.Cluster) error {
 	}
 
 	cluster.Status.AppliedAgentEnvVars = append(settings.DefaultAgentSettingsAsEnvVars(), cluster.Spec.AgentEnvVars...)
+	cluster.Status.AppliedClusterImagePullSecretHash = pullSecretHash
 
 	util.UpdateAppliedAgentDeploymentCustomization(cluster)
 
@@ -555,11 +589,24 @@ func (cd *clusterDeploy) getYAML(cluster *apimgmtv3.Cluster, agentImage, authIma
 		return nil, fmt.Errorf("waiting for server-url setting to be set")
 	}
 
-	buf := &bytes.Buffer{}
-	err = systemtemplate.SystemTemplate(buf, agentImage, authImage, cluster.Name,
-		token, url, capr.PreBootstrap(cluster), cluster, features,
-		taints, cd.secretLister, priorityClassExists, namespace.GetMutator())
+	ops := &systemtemplate.TemplateOps{
+		AgentImage:             agentImage,
+		AuthImage:              authImage,
+		Namespace:              cluster.Name,
+		SystemProjectNamespace: cluster.Name,
+		Token:                  token,
+		URL:                    url,
+		IsPreBootstrap:         capr.PreBootstrap(cluster),
+		Cluster:                cluster,
+		AgentFeatures:          features,
+		Taints:                 taints,
+		SecretLister:           cd.secretLister,
+		PcExists:               priorityClassExists,
+		Mutator:                namespace.GetMutator(),
+	}
 
+	buf := &bytes.Buffer{}
+	err = systemtemplate.SystemTemplate(buf, ops)
 	return buf.Bytes(), err
 }
 

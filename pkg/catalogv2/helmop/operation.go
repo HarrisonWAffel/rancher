@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"sort"
 	"strings"
@@ -25,6 +26,7 @@ import (
 	catalog "github.com/rancher/rancher/pkg/apis/catalog.cattle.io/v1"
 	v3 "github.com/rancher/rancher/pkg/apis/management.cattle.io/v3"
 	"github.com/rancher/rancher/pkg/catalogv2/content"
+	"github.com/rancher/rancher/pkg/cluster"
 	catalogcontrollers "github.com/rancher/rancher/pkg/generated/controllers/catalog.cattle.io/v1"
 	namespaces "github.com/rancher/rancher/pkg/namespace"
 	"github.com/rancher/rancher/pkg/settings"
@@ -39,6 +41,7 @@ import (
 	"github.com/rancher/wrangler/v3/pkg/schemas/validation"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apiserver/pkg/authentication/user"
@@ -63,6 +66,12 @@ var (
 		"Chart.yaml": true,
 		"chart.yml":  true,
 		"Chart.yml":  true,
+	}
+	valuesYAML = map[string]bool{
+		"values.yaml": true,
+		"values.yml":  true,
+		"Values.yaml": true,
+		"Values.yml":  true,
 	}
 )
 
@@ -144,17 +153,20 @@ func init() {
 
 // Operations describes a helm operation, containing its namespace, roles and such
 type Operations struct {
-	namespace      string                               // namespace the operation is going to be in
-	contentManager *content.Manager                     // manager struct to retrieve information about helm repos and its charts
-	Impersonator   *podimpersonation.PodImpersonation   // the impersonator used to manage pods created using the service account of the logged in user
-	clusterRepos   catalogcontrollers.ClusterRepoClient // client for cluster repo custom resource
-	ops            catalogcontrollers.OperationClient   // client for operation custom resource
-	pods           corev1controllers.PodClient          // client for pod kubernetes resource
-	nodes          corev1controllers.NodeClient
-	apps           catalogcontrollers.AppClient        // client for apps custom resource
-	roles          rbacv1controllers.RoleClient        // client for role kubernetes resource
-	roleBindings   rbacv1controllers.RoleBindingClient // client for rolebinding kubernetes resource
-	cg             proxy.ClientGetter                  // dynamic kubernetes client factory
+	namespace         string                               // namespace the operation is going to be in
+	contentManager    *content.Manager                     // manager struct to retrieve information about helm repos and its charts
+	Impersonator      *podimpersonation.PodImpersonation   // the impersonator used to manage pods created using the service account of the logged in user
+	clusterRepos      catalogcontrollers.ClusterRepoClient // client for cluster repo custom resource
+	clusterReposCache catalogcontrollers.ClusterRepoCache
+	ops               catalogcontrollers.OperationClient // client for operation custom resource
+	pods              corev1controllers.PodClient        // client for pod kubernetes resource
+	nodes             corev1controllers.NodeClient
+	apps              catalogcontrollers.AppClient // client for apps custom resource
+	roles             rbacv1controllers.RoleClient // client for role kubernetes resource
+	secretCache       corev1controllers.SecretCache
+	secretClient      corev1controllers.SecretClient
+	roleBindings      rbacv1controllers.RoleBindingClient // client for rolebinding kubernetes resource
+	cg                proxy.ClientGetter                  // dynamic kubernetes client factory
 }
 
 // NewOperations creates a new Operations struct with all fields initialized
@@ -164,19 +176,22 @@ func NewOperations(
 	rbac rbacv1controllers.Interface,
 	contentManager *content.Manager,
 	pods corev1controllers.PodClient,
-	nodes corev1controllers.NodeClient) *Operations {
+	nodes corev1controllers.NodeClient, secretCache corev1controllers.SecretCache, secretClient corev1controllers.SecretClient) *Operations {
 	return &Operations{
-		cg:             cg,
-		contentManager: contentManager,
-		namespace:      namespaces.System,
-		Impersonator:   podimpersonation.New("helm-op", cg, time.Hour, settings.FullShellImage),
-		pods:           pods,
-		clusterRepos:   catalog.ClusterRepo(),
-		ops:            catalog.Operation(),
-		apps:           catalog.App(),
-		roleBindings:   rbac.RoleBinding(),
-		roles:          rbac.Role(),
-		nodes:          nodes,
+		cg:                cg,
+		contentManager:    contentManager,
+		namespace:         namespaces.System,
+		Impersonator:      podimpersonation.New("helm-op", cg, time.Hour, settings.FullShellImage),
+		pods:              pods,
+		clusterRepos:      catalog.ClusterRepo(),
+		clusterReposCache: catalog.ClusterRepo().Cache(),
+		ops:               catalog.Operation(),
+		apps:              catalog.App(),
+		roleBindings:      rbac.RoleBinding(),
+		roles:             rbac.Role(),
+		nodes:             nodes,
+		secretCache:       secretCache,
+		secretClient:      secretClient,
 	}
 }
 
@@ -200,13 +215,13 @@ func (s *Operations) Uninstall(ctx context.Context, user user.Info, namespace, n
 		return nil, err
 	}
 
-	return s.createOperation(ctx, user, status, cmds, imageOverride)
+	return s.createOperation(ctx, user, status, cmds, imageOverride, "")
 }
 
 // Upgrade gets the upgrade commands using the given namespace, name and options and gets the user using the isApp flag as false.
 // Returns a catalog.Operation that represents the helm operation to be created
-func (s *Operations) Upgrade(ctx context.Context, user user.Info, namespace, name string, options io.Reader, imageOverride string) (*catalog.Operation, error) {
-	status, cmds, err := s.getUpgradeCommand(namespace, name, options)
+func (s *Operations) Upgrade(ctx context.Context, user user.Info, repoNamespace, repoName string, options io.Reader, imageOverride string) (*catalog.Operation, error) {
+	status, cmds, err := s.getUpgradeCommand(repoNamespace, repoName, options)
 	if err != nil {
 		return nil, err
 	}
@@ -218,18 +233,18 @@ func (s *Operations) Upgrade(ctx context.Context, user user.Info, namespace, nam
 		}
 	}
 
-	user, err = s.getUser(user, namespace, name, false)
+	user, err = s.getUser(user, repoNamespace, repoName, false)
 	if err != nil {
 		return nil, err
 	}
 
-	return s.createOperation(ctx, user, status, cmds, imageOverride)
+	return s.createOperation(ctx, user, status, cmds, imageOverride, repoName)
 }
 
 // Install gets the install commands using the given namespace, name and options and gets the user using the isApp flag as false.
 // Returns a catalog.Operation that represents the helm operation to be created
-func (s *Operations) Install(ctx context.Context, user user.Info, namespace, name string, options io.Reader, imageOverride string) (*catalog.Operation, error) {
-	status, cmds, err := s.getInstallCommand(namespace, name, options)
+func (s *Operations) Install(ctx context.Context, user user.Info, repoNamespace, repoName string, options io.Reader, imageOverride string) (*catalog.Operation, error) {
+	status, cmds, err := s.getInstallCommand(repoNamespace, repoName, options)
 	if err != nil {
 		return nil, err
 	}
@@ -241,12 +256,12 @@ func (s *Operations) Install(ctx context.Context, user user.Info, namespace, nam
 		}
 	}
 
-	user, err = s.getUser(user, namespace, name, false)
+	user, err = s.getUser(user, repoNamespace, repoName, false)
 	if err != nil {
 		return nil, err
 	}
 
-	return s.createOperation(ctx, user, status, cmds, imageOverride)
+	return s.createOperation(ctx, user, status, cmds, imageOverride, repoName)
 }
 
 // decodeParams decodes the request using its url and v1 group version into the target object
@@ -481,6 +496,7 @@ type Command struct {
 	ArgObjects       []interface{} // the arguments that will be used in the command
 	ValuesFile       string        // name of the values.yaml file
 	Values           []byte        // content of the values.yaml file
+	ChartBaseValues  []byte        // the full values.yaml file of the incoming chart
 	ChartFile        string        // name of the chart tar file
 	Chart            []byte        // content of the chart file
 	ReleaseName      string        // name of the release
@@ -631,23 +647,24 @@ func sanitizeVersion(chartVersion string) string {
 	return badChars.ReplaceAllString(chartVersion, "-")
 }
 
-// injectAnnotation receives the chart data from a tar file and injects the given annotations.
-// Returns the modified chart data
-func injectAnnotation(data []byte, annotations map[string]string) ([]byte, error) {
+// injectAnnotationRetrieveValues receives the chart data from a tar file and injects the given annotations.
+// Returns the modified chart data and values.yaml of the chart.
+func injectAnnotationRetrieveValues(data []byte, annotations map[string]string) ([]byte, []byte, error) {
 	if len(annotations) == 0 {
-		return data, nil
+		return data, nil, nil
 	}
 
 	tgz, err := gzip.NewReader(bytes.NewReader(data))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	var (
-		dest    = &bytes.Buffer{}
-		destGz  = gzip.NewWriter(dest)
-		destTar = tar.NewWriter(destGz)
-		tar     = tar.NewReader(tgz)
+		dest            = &bytes.Buffer{}
+		destGz          = gzip.NewWriter(dest)
+		destTar         = tar.NewWriter(destGz)
+		tar             = tar.NewReader(tgz)
+		chartValuesYaml []byte
 	)
 
 	for {
@@ -658,7 +675,7 @@ func injectAnnotation(data []byte, annotations map[string]string) ([]byte, error
 
 		data, err := io.ReadAll(tar)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
 		// checks if its chart.yaml
@@ -666,30 +683,35 @@ func injectAnnotation(data []byte, annotations map[string]string) ([]byte, error
 		if len(parts) == 2 && chartYAML[parts[1]] {
 			data, err = addAnnotations(data, annotations)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			header.Size = int64(len(data))
 		}
 
+		// checks if its values.yaml
+		if len(parts) == 2 && valuesYAML[parts[1]] {
+			chartValuesYaml = data
+		}
+
 		if err := destTar.WriteHeader(header); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
 		_, err = destTar.Write(data)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
 
 	if err = destTar.Close(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	if err = destGz.Close(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return dest.Bytes(), nil
+	return dest.Bytes(), chartValuesYaml, nil
 }
 
 // addAnnotations receives that chart.yaml data and injects the given annotations in it
@@ -742,20 +764,20 @@ func (s *Operations) getChartCommand(namespace, name, chartName, chartVersion st
 	if err != nil {
 		return Command{}, err
 	}
-
-	chartData, err = injectAnnotation(chartData, annotations)
+	var baseChartValues []byte
+	chartData, baseChartValues, err = injectAnnotationRetrieveValues(chartData, annotations)
 	if err != nil {
 		return Command{}, err
 	}
-
 	valuesFileName := sanitizeCommandKeyNames(fmt.Sprintf("values-%s-%s.yaml", chartName, sanitizeVersion(chartVersion)))
 	chartFileName := sanitizeCommandKeyNames(fmt.Sprintf("%s-%s.tgz", chartName, sanitizeVersion(chartVersion)))
 
 	c := Command{
-		ValuesFile: valuesFileName,
-		ChartFile:  chartFileName,
-		Chart:      chartData,
-		Kustomize:  s.enableKustomize(annotations, upgrade),
+		ValuesFile:      valuesFileName,
+		ChartBaseValues: baseChartValues,
+		ChartFile:       chartFileName,
+		Chart:           chartData,
+		Kustomize:       s.enableKustomize(annotations, upgrade),
 	}
 
 	if len(values) > 0 {
@@ -840,12 +862,21 @@ func namespace(ns string) string {
 // createOperation creates an operation and its pod, along with its roles and roleBinding.
 // Uses the Operations.Impersonator and Operations.ops to do it.
 // Returns the created catalog.Operation struct
-func (s *Operations) createOperation(ctx context.Context, user user.Info, status catalog.OperationStatus, cmds Commands, imageOverride string) (*catalog.Operation, error) {
+func (s *Operations) createOperation(ctx context.Context, user user.Info, status catalog.OperationStatus, cmds Commands, imageOverride string, clusterRepoName string) (*catalog.Operation, error) {
+	//var pullSecrets []string
 	if status.Action != "uninstall" {
 		_, err := s.createNamespace(ctx, status.Namespace, status.ProjectID)
 		if err != nil {
 			return nil, err
 		}
+		//// TODO: exlude specific clusters.
+		//pullSecrets, err = s.createOrUpdatePullSecrets(ns.Name, clusterRepoName)
+		//for _, cmd := range cmds {
+		//	err = s.injectPullSecrets(cmd.ChartBaseValues, cmd.Values, pullSecrets)
+		//	if err != nil {
+		//		return nil, err
+		//	}
+		//}
 	}
 
 	secretData, err := cmds.Render()
@@ -950,6 +981,154 @@ func (s *Operations) createRoleAndRoleBindings(op *catalog.Operation, user strin
 	}
 
 	return nil
+}
+
+func getValueAtPath(data map[string]any, path ...string) (any, bool) {
+	current := any(data)
+	for i, key := range path {
+		cm, ok := current.(map[string]any)
+		if !ok {
+			return nil, false
+		}
+		v, ok := cm[key]
+		if !ok {
+			return nil, false
+		}
+		if i == len(path)-1 {
+			return v, true
+		}
+		current = v
+	}
+	return nil, false
+}
+
+func (s *Operations) injectPullSecrets(chartBaseValues []byte, configuredValues []byte, secretNames []string) error {
+	if len(secretNames) == 0 {
+		return nil
+	}
+
+	// if the base chart values specifies a .global.cattle.imagePullSecrets field that has not been configured,
+	// inject them.
+	var baseValues, confValues map[string]any
+	err := yaml.Unmarshal(chartBaseValues, &baseValues)
+	if err != nil {
+		return err
+	}
+
+	err = json.Unmarshal(configuredValues, &confValues)
+	if err != nil {
+		return err
+	}
+
+	value, pathExists := getValueAtPath(confValues, "global", "cattle", "imagePullSecrets")
+	if pathExists {
+		if secrets, ok := value.([]any); ok && len(secrets) > 0 {
+			return nil
+		}
+	}
+
+	// does the chart even accept global.cattle.imagePullSecrets?
+	_, pathExists = getValueAtPath(baseValues, "global", "cattle", "imagePullSecrets")
+	if !pathExists {
+		return nil
+	}
+
+	// inject the secrets.
+	global, _ := confValues["global"].(map[string]any)
+	if global == nil {
+		global = map[string]any{}
+		confValues["global"] = global
+	}
+	cattle, _ := global["cattle"].(map[string]any)
+	if cattle == nil {
+		cattle = map[string]any{}
+		global["cattle"] = cattle
+	}
+
+	pullSecrets := make([]map[string]string, len(secretNames))
+	for i, e := range secretNames {
+		pullSecrets[i] = map[string]string{"name": e}
+	}
+	cattle["imagePullSecrets"] = pullSecrets
+
+	return nil
+}
+
+func (s *Operations) createOrUpdatePullSecrets(namespace string, repoName string) ([]string, error) {
+	if repoName != "rancher-charts" {
+		return nil, nil
+	}
+
+	repo, err := s.clusterReposCache.Get(repoName)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(repo.Spec.DefaultImagePullSecrets) == 0 {
+		return nil, nil
+	}
+
+	/*
+		Look up the cluster repo
+		If it's setup with default pull secrets, look up each secret
+		Ensure that the proper label is set on each secret. The label is 'management.cattle.io/rancher-managed-pull-secret'
+		This logic is open to change in the future, but for the initial implementation this is how we will restrict the specific secrets that
+		can be deployed using this process.
+
+		This does not, however, strictly achieve the "users cannot edit the defined secret" requirement. But it DOES functionally prevent it.
+	*/
+	var secretNames []string
+	for _, secret := range repo.Spec.DefaultImagePullSecrets {
+		pullSec, err := s.secretCache.Get(namespaces.System, secret.Name)
+		if err != nil {
+			return nil, err
+		}
+		if pullSec.Labels == nil {
+			continue
+		}
+		_, isCopiedSecret := pullSec.Labels[cluster.CopiedPullSecretLabel]
+		_, isSourceSecret := pullSec.Labels[cluster.SourcePullSecretLabel]
+		if !isCopiedSecret && !isSourceSecret {
+			continue
+		}
+
+		create := false
+		existingSec, err := s.secretCache.Get(namespace, secret.Name)
+		if err != nil {
+			if !errors.IsNotFound(err) {
+				return nil, err
+			}
+			create = true
+		}
+
+		if create {
+			newSec := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      secret.Name,
+					Namespace: namespace,
+				},
+				Data: map[string][]byte{},
+				Type: corev1.SecretTypeDockerConfigJson,
+			}
+			newSec.Data[corev1.DockerConfigJsonKey] = pullSec.Data[corev1.DockerConfigJsonKey]
+			_, err = s.secretClient.Create(newSec)
+			if err != nil {
+				return nil, err
+			}
+		} else if existingSec.Data == nil || existingSec.Data[corev1.DockerConfigJsonKey] == nil || !reflect.DeepEqual(existingSec.Data[corev1.DockerConfigJsonKey], pullSec.Data[corev1.DockerConfigJsonKey]) {
+			existingSec = existingSec.DeepCopy()
+			if existingSec.Data == nil {
+				existingSec.Data = map[string][]byte{}
+			}
+			existingSec.Data[corev1.DockerConfigJsonKey] = pullSec.Data[corev1.DockerConfigJsonKey]
+			_, err = s.secretClient.Update(existingSec)
+			if err != nil {
+				return nil, err
+			}
+		}
+		secretNames = append(secretNames, secret.Name)
+	}
+	return secretNames, nil
 }
 
 // createNamespace creates a new k8s namespace and returns its object.
@@ -1149,6 +1328,13 @@ func (s *Operations) createPod(secretData map[string][]byte, kustomize bool, ima
 				},
 			},
 		},
+	}
+
+	if settings.SystemDefaultRegistryPullSecrets.Get() != "" {
+		secrets := strings.Split(settings.SystemDefaultRegistryPullSecrets.Get(), ",")
+		for _, secret := range secrets {
+			pod.Spec.ImagePullSecrets = append(pod.Spec.ImagePullSecrets, corev1.LocalObjectReference{Name: secret})
+		}
 	}
 
 	// if kustomize is false then helmDataPath is an acceptable path for helm to run. If it is true,

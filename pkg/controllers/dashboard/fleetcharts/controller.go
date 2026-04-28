@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	v3 "github.com/rancher/rancher/pkg/apis/management.cattle.io/v3"
+	"github.com/rancher/rancher/pkg/cluster"
 	"github.com/rancher/rancher/pkg/controllers/dashboard/chart"
 	"github.com/rancher/rancher/pkg/features"
 	fleetconst "github.com/rancher/rancher/pkg/fleet"
@@ -37,12 +38,13 @@ var (
 	}
 
 	watchedSettings = map[string]struct{}{
-		settings.ServerURL.Name:             {},
-		settings.CACerts.Name:               {},
-		settings.SystemDefaultRegistry.Name: {},
-		settings.FleetMinVersion.Name:       {},
-		settings.FleetVersion.Name:          {},
-		settings.AgentTLSMode.Name:          {},
+		settings.ServerURL.Name:                        {},
+		settings.CACerts.Name:                          {},
+		settings.SystemDefaultRegistry.Name:            {},
+		settings.SystemDefaultRegistryPullSecrets.Name: {},
+		settings.FleetMinVersion.Name:                  {},
+		settings.FleetVersion.Name:                     {},
+		settings.AgentTLSMode.Name:                     {},
 	}
 )
 
@@ -71,7 +73,8 @@ type handler struct {
 	chartsConfig chart.RancherConfigGetter
 }
 
-func (h *handler) onSetting(key string, setting *v3.Setting) (*v3.Setting, error) {
+// This just installs fleet on the local cluster only
+func (h *handler) onSetting(_ string, setting *v3.Setting) (*v3.Setting, error) {
 	if setting == nil {
 		return nil, nil
 	}
@@ -112,6 +115,11 @@ func (h *handler) onSetting(key string, setting *v3.Setting) (*v3.Setting, error
 		},
 	}
 
+	registry, _ := cluster.GetPrivateRegistry(nil)
+	if registry != nil {
+		systemGlobalRegistry["cattle"].(map[string]interface{})["imagePullSecrets"] = registry.PullSecretNamesAsSlice()
+	}
+
 	fleetChartValues := map[string]interface{}{
 		"agentTLSMode": settings.AgentTLSMode.Get(),
 		"apiServerURL": settings.ServerURL.Get(),
@@ -124,6 +132,15 @@ func (h *handler) onSetting(key string, setting *v3.Setting) (*v3.Setting, error
 		"gitops": map[string]interface{}{
 			"enabled": features.Gitops.Enabled(),
 		},
+	}
+
+	if features.ClusterAutoscaling.Enabled() {
+		fleetChartValues["extraEnv"] = []map[string]interface{}{
+			{
+				"name":  "EXPERIMENTAL_COPY_RESOURCES_DOWNSTREAM",
+				"value": "true",
+			},
+		}
 	}
 
 	if envVal, ok := os.LookupEnv("HTTP_PROXY"); ok {
