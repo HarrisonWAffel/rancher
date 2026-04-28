@@ -1,0 +1,43 @@
+apiVersion: v1
+entries:
+  rancher:
+  - apiVersion: v2
+    appVersion: v2.8.5-debug-41905-2
+    created: "2024-08-28T09:13:21.714772-03:00"
+    description: Install Rancher Server to manage Kubernetes clusters across providers.
+    digest: 3a3a6b7e0c6ee5a3a0cc987be83db44efefb6226d524237aa6422b0a6b000935
+    home: https://rancher.com
+    icon: https://github.com/rancher/ui/blob/master/public/assets/images/logos/welcome-cow.svg
+    keywords:
+    - rancher
+    kubeVersion: < 1.29.0-0
+    maintainers:
+    - email: charts@rancher.com
+      name: Rancher Labs
+    name: rancher
+    sources:
+    - https://github.com/rancher/rancher
+    - https://github.com/rancher/server-chart
+    urls:
+    - rancher-2.8.5-debug-41905-2.tgz
+    version: 2.8.5-debug-41905-2
+  - apiVersion: v2
+    appVersion: bd7af2ec0
+    created: "2026-04-28T15:06:33.328044-04:00"
+    description: Install Rancher Server to manage Kubernetes clusters across providers.
+    digest: ccbb530b28d51ecb8cb03e5e3a798467bfabbb66d763dcdb31d53fca48f35c64
+    home: https://rancher.com
+    icon: https://raw.githubusercontent.com/rancher/ui/master/public/assets/images/logos/welcome-cow.svg
+    keywords:
+    - rancher
+    kubeVersion: < 1.37.0-0
+    maintainers:
+    - email: charts@rancher.com
+      name: Rancher Labs
+    name: rancher
+    sources:
+    - https://github.com/rancher/rancher
+    urls:
+    - rancher-0.0.0-1777401684.commit-bd7af2ec0.authd-private-registr.tgz
+    version: 0.0.0-1777401684.commit-bd7af2ec0.authd-private-registr
+generated: "2026-04-28T15:06:33.326709-04:00"
