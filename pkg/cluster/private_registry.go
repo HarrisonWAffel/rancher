@@ -14,6 +14,15 @@ import (
 	kcorev1 "k8s.io/api/core/v1"
 )
 
+const (
+	// SourcePullSecretLabel is used to track secrets in the cattle-system namespace which are used
+	// as the global system default registry pull secrets (via the global setting).
+	SourcePullSecretLabel = "management.cattle.io/rancher-default-registry-pull-secret"
+	// CopiedPullSecretLabel is used to track the project scoped secrets created by the below controllers,
+	// so that their life cycle can be managed by other controllers (e.g. imported cluster cleanup).
+	CopiedPullSecretLabel = "management.cattle.io/rancher-managed-pull-secret"
+)
+
 var MgmtNameRegexp = regexp.MustCompile("^(c-[a-z0-9]{5}|local)$")
 
 // AgentPullSecret represents a single .dockerconfigjson entry for a given registry URL

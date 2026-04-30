@@ -10,8 +10,10 @@ import (
 	"strings"
 
 	v3 "github.com/rancher/rancher/pkg/apis/management.cattle.io/v3"
+	"github.com/rancher/rancher/pkg/cluster"
 	mgmtv3 "github.com/rancher/rancher/pkg/generated/controllers/management.cattle.io/v3"
 	"github.com/rancher/rancher/pkg/rbac"
+	"github.com/rancher/rancher/pkg/settings"
 	"github.com/rancher/rancher/pkg/types/config"
 	wcorev1 "github.com/rancher/wrangler/v3/pkg/generated/controllers/core/v1"
 	"github.com/rancher/wrangler/v3/pkg/relatedresource"
@@ -28,12 +30,17 @@ import (
 )
 
 const (
-	userSecretAnnotation     = "secret.user.cattle.io/secret"
-	namespaceChangeHandler   = "project-scoped-secret-namespace-handler"
-	namespaceEnqueuerName    = "project-scoped-secret-namespace-enqueuer"
-	projectIDLabel           = "field.cattle.io/projectId"
-	ProjectScopedSecretLabel = "management.cattle.io/project-scoped-secret"
-	pssCopyAnnotation        = "management.cattle.io/project-scoped-secret-copy"
+	userSecretAnnotation   = "secret.user.cattle.io/secret"
+	namespaceChangeHandler = "project-scoped-secret-namespace-handler"
+	namespaceEnqueuerName  = "project-scoped-secret-namespace-enqueuer"
+	settingEnqueuerName    = "project-scoped-secret-setting-enqueuer"
+
+	projectIDLabel                 = "field.cattle.io/projectId"
+	ProjectScopedSecretLabel       = "management.cattle.io/project-scoped-secret"
+	pssCopyAnnotation              = "management.cattle.io/project-scoped-secret-copy"
+	PSSIgnoreNamespacesAnnotations = "management.cattle.io/project-scoped-secret-ignore-namespaces"
+
+	needsGlobalPrivateRegistryPullSecret = "management.cattle.io/use-global-private-registry-pull-secret"
 )
 
 // previous controller label, annotations and finalizer
@@ -54,15 +61,18 @@ type namespaceHandler struct {
 
 func RegisterProjectScopedSecretHandler(ctx context.Context, cluster *config.UserContext) {
 	n := &namespaceHandler{
+		clusterName:            cluster.ClusterName,
 		secretClient:           cluster.Corew.Secret(),
+		clusterNamespaceCache:  cluster.Corew.Namespace().Cache(),
 		managementSecretCache:  cluster.Management.Wrangler.Core.Secret().Cache(),
 		managementSecretClient: cluster.Management.Wrangler.Core.Secret(),
 		projectCache:           cluster.Management.Wrangler.Mgmt.Project().Cache(),
-		clusterNamespaceCache:  cluster.Corew.Namespace().Cache(),
-		clusterName:            cluster.ClusterName,
 	}
+
 	cluster.Corew.Namespace().OnChange(ctx, namespaceChangeHandler, n.OnChange)
+
 	relatedresource.WatchClusterScoped(ctx, namespaceEnqueuerName, n.secretEnqueueNamespace, cluster.Corew.Namespace(), cluster.Management.Wrangler.Core.Secret())
+	relatedresource.WatchClusterScoped(ctx, settingEnqueuerName, n.onSettingEnqueueNamespace, cluster.Corew.Namespace(), cluster.Management.Wrangler.Mgmt.Setting())
 }
 
 func (n *namespaceHandler) OnChange(_ string, namespace *corev1.Namespace) (*corev1.Namespace, error) {
@@ -88,12 +98,28 @@ func (n *namespaceHandler) OnChange(_ string, namespace *corev1.Namespace) (*cor
 		return nil, err
 	}
 
+	// If we're working with a namespace that is associated with a system project,
+	// allow the global pull secrets to be mirrored if needed.
+	if isSystemProject(project) && usesGlobalSecrets(project) {
+		// getting the currently configured global pull secrets
+		globalPullSecrets, err := n.getGlobalPullSecrets()
+		if err != nil {
+			return nil, err
+		}
+		secrets = append(secrets, globalPullSecrets...)
+	}
+
 	var errs error
 	desiredSecrets := sets.New[types.NamespacedName]()
 
 	// create/update project scoped secrets
 	for _, secret := range secrets {
 		secretCopy := getNamespacedSecret(secret, namespace.Name)
+
+		// if this specific namespace is denied for the given PSS, just don't create it.
+		if slices.Contains(strings.Split(secretCopy.Annotations[PSSIgnoreNamespacesAnnotations], ","), namespace.Name) {
+			continue
+		}
 
 		_, err := rbac.CreateOrUpdateNamespacedResource(secretCopy, n.secretClient, areSecretsSame)
 		desiredSecrets.Insert(client.ObjectKeyFromObject(secretCopy))
@@ -157,8 +183,7 @@ func (n *namespaceHandler) getProjectScopedSecretsFromNamespace(project *v3.Proj
 }
 
 // removeUndesiredProjectScopedSecrets removes project scoped secrets from the namespace that are not in the desiredSecrets map.
-func (n *namespaceHandler) removeUndesiredProjectScopedSecrets(namespace *corev1.Namespace, desiredSecrets sets.Set[types.NamespacedName]) error {
-	// remove any project scoped secrets that don't belong in the project
+func (n *namespaceHandler) removeUndesiredProjectScopedSecrets(namespace *corev1.Namespace, upstreamDesiredSecrets sets.Set[types.NamespacedName]) error {
 	downstreamProjectScopedSecrets, err := n.secretClient.List(namespace.Name, metav1.ListOptions{
 		LabelSelector: ProjectScopedSecretLabel,
 	})
@@ -174,7 +199,18 @@ func (n *namespaceHandler) removeUndesiredProjectScopedSecrets(namespace *corev1
 		}
 	}
 
-	secretsToDelete := allSecrets.Difference(desiredSecrets)
+	downstreamGlobalPullSecrets, err := n.secretClient.List(namespace.Name, metav1.ListOptions{
+		LabelSelector: cluster.CopiedPullSecretLabel,
+	})
+	if err != nil {
+		return err
+	}
+
+	for _, secret := range downstreamGlobalPullSecrets.Items {
+		allSecrets.Insert(client.ObjectKeyFromObject(&secret))
+	}
+
+	secretsToDelete := allSecrets.Difference(upstreamDesiredSecrets)
 
 	var errs error
 	for _, secret := range secretsToDelete.UnsortedList() {
@@ -207,6 +243,72 @@ func (n *namespaceHandler) getProjectFromNamespace(namespace *corev1.Namespace) 
 	return project, err
 }
 
+// onSettingEnqueueNamespace watches the SystemDefaultRegistryPullSecrets setting for any changes to the defined pull secrets. When a change
+// is detected, it will iterate across all system projects and filter those which rely on the globally defined pull secret. It then enqueues the
+// backing namespace of each project, ensuring that the globally defined image pull secrets are properly synchronized downstream.
+func (n *namespaceHandler) onSettingEnqueueNamespace(_, _ string, obj runtime.Object) ([]relatedresource.Key, error) {
+	if obj == nil {
+		return nil, nil
+	}
+
+	setting, ok := obj.(*v3.Setting)
+	if !ok {
+		logrus.Errorf("unable to convert object: %[1]v, type: %[1]T to a secret", obj)
+		return nil, nil
+	}
+	if setting.Name != settings.SystemDefaultRegistryPullSecrets.Name {
+		return nil, nil
+	}
+
+	// find all the projects that rely on the global pull settings defined by the SystemDefaultRegistryPullSecrets setting
+	projects, err := n.projectCache.List(n.clusterName, labels.SelectorFromSet(map[string]string{
+		needsGlobalPrivateRegistryPullSecret: "true",
+	}))
+	if err != nil {
+		return nil, fmt.Errorf("failed to list projects which need global private registry pull secret: %v", err)
+	}
+	if len(projects) == 0 {
+		return nil, nil
+	}
+
+	// Iterate over all projects which have indicated they need global pull secrets.
+	// Only enqueue them if they are system-projects created by Rancher.
+	var allNamespaces []*corev1.Namespace
+	var errs []error
+	for _, project := range projects {
+		// Only synchronize global pull secrets into _system projects_ that indicate they need them.
+		// Don't allow users to copy the pull secrets into arbitrary projects / namespaces.
+		v, ok := project.Labels["authz.management.cattle.io/system-project"]
+		if !ok || v != "true" {
+			continue
+		}
+
+		projBackingNamespaces, err := n.clusterNamespaceCache.List(labels.SelectorFromSet(map[string]string{
+			projectIDLabel: project.Name,
+		}))
+		if err != nil {
+			if !apierrors.IsNotFound(err) {
+				errs = append(errs, err)
+			}
+			continue
+		}
+
+		allNamespaces = append(allNamespaces, projBackingNamespaces...)
+	}
+
+	if allNamespaces == nil || len(allNamespaces) == 0 {
+		return nil, errors.Join(errs...)
+	}
+
+	namespaceKeys := make([]relatedresource.Key, 0, len(allNamespaces))
+	for _, namespace := range allNamespaces {
+		namespaceKeys = append(namespaceKeys, relatedresource.Key{Name: namespace.Name})
+	}
+
+	// pushes the namespace associated with the project that is pointed to by this secret
+	return namespaceKeys, errors.Join(errs...)
+}
+
 // secretEnqueueNamespace enqueues all the project namespaces of a project scoped secret.
 func (n *namespaceHandler) secretEnqueueNamespace(_, _ string, obj runtime.Object) ([]relatedresource.Key, error) {
 	if obj == nil {
@@ -223,11 +325,69 @@ func (n *namespaceHandler) secretEnqueueNamespace(_, _ string, obj runtime.Objec
 		return nil, err
 	}
 
+	globalPullSecretsNamespaces, err := n.getNamespacesFromGlobalPullSecret(secret)
+	if err != nil {
+		return nil, err
+	}
+	namespaces = append(namespaces, globalPullSecretsNamespaces...)
+
 	namespaceKeys := make([]relatedresource.Key, 0, len(namespaces))
 	for _, namespace := range namespaces {
 		namespaceKeys = append(namespaceKeys, relatedresource.Key{Name: namespace.Name})
 	}
 	return namespaceKeys, nil
+}
+
+func (n *namespaceHandler) getNamespacesFromGlobalPullSecret(secret *corev1.Secret) ([]*corev1.Namespace, error) {
+	if secret.Labels == nil {
+		return nil, nil
+	}
+	_, ok := secret.Labels[ProjectScopedSecretLabel]
+	if ok {
+		return nil, nil
+	}
+	_, isDefaultRegistrySecret := secret.Labels[cluster.SourcePullSecretLabel]
+	if !isDefaultRegistrySecret {
+		// It's not a global pull secret, nothing to do.
+		return nil, nil
+	}
+
+	// gather all the projects which have indicated that they need this pull secret.
+	projects, err := n.projectCache.List(n.clusterName, labels.SelectorFromSet(map[string]string{
+		needsGlobalPrivateRegistryPullSecret: "true",
+	}))
+	if err != nil {
+		return nil, fmt.Errorf("failed to list projects which need global private registry pull secret: %v", err)
+	}
+	if len(projects) == 0 {
+		return nil, nil
+	}
+
+	// enqueue the backing namespace of any project which indicates it needs to use this global pull secret,
+	// so long as it is a system project.
+	var allNamespaces []*corev1.Namespace
+	var errs []error
+	for _, project := range projects {
+		// Only synchronize global pull secrets into system projects that indicate they need them.
+		// Don't allow users to copy the pull secrets into arbitrary namespaces.
+		if project.Labels == nil {
+			continue
+		}
+		v, ok := project.Labels["authz.management.cattle.io/system-project"]
+		if !ok || v != "true" {
+			continue
+		}
+		projNamespaces, err := n.clusterNamespaceCache.List(labels.SelectorFromSet(map[string]string{
+			projectIDLabel: project.Name,
+		}))
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		allNamespaces = append(allNamespaces, projNamespaces...)
+	}
+
+	return allNamespaces, errors.Join(errs...)
 }
 
 // getNamespacesFromSecret returns a slice of project namespaces from a project scoped secret.
@@ -260,6 +420,38 @@ func (n *namespaceHandler) getNamespacesFromSecret(secret *corev1.Secret) ([]*co
 	return n.clusterNamespaceCache.List(labels.NewSelector().Add(*r))
 }
 
+// getGlobalPullSecrets retrieves the pull secrets specified by the SystemDefaultRegistryPullSecrets setting
+// directly by name from the management secret cache.
+func (n *namespaceHandler) getGlobalPullSecrets() ([]*corev1.Secret, error) {
+	// check the global setting to see what's currently configured
+	registry, _ := cluster.GetPrivateRegistry(nil)
+	if registry == nil || len(registry.PullSecrets) == 0 {
+		return nil, nil
+	}
+
+	var pullSecrets []*corev1.Secret
+	for _, ref := range registry.PullSecrets {
+		secret, err := n.managementSecretCache.Get(ref.Namespace, ref.Name)
+		if apierrors.IsNotFound(err) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		secretCopy := secret.DeepCopy()
+		if secretCopy.Labels == nil {
+			secretCopy.Labels = make(map[string]string)
+		}
+		delete(secretCopy.Labels, cluster.SourcePullSecretLabel)
+		secretCopy.Labels[cluster.CopiedPullSecretLabel] = "true"
+		if secretCopy.Type != corev1.SecretTypeDockerConfigJson {
+			secretCopy.Type = corev1.SecretTypeDockerConfigJson
+		}
+		pullSecrets = append(pullSecrets, secretCopy)
+	}
+	return pullSecrets, nil
+}
+
 // getNamespacedSecret copies a project scoped secret and replaces the namespace with the passed in namespace.
 func getNamespacedSecret(obj *corev1.Secret, namespace string) *corev1.Secret {
 	namespacedSecret := &corev1.Secret{}
@@ -282,4 +474,18 @@ func areSecretsSame(s1, s2 *corev1.Secret) bool {
 	return reflect.DeepEqual(s1.Data, s2.Data) &&
 		s1.Annotations[ProjectScopedSecretLabel] == s2.Annotations[ProjectScopedSecretLabel] &&
 		s1.Annotations[pssCopyAnnotation] == s2.Annotations[pssCopyAnnotation]
+}
+
+func isSystemProject(project *v3.Project) bool {
+	if project.Labels == nil {
+		return false
+	}
+	return project.Labels["authz.management.cattle.io/system-project"] == "true"
+}
+
+func usesGlobalSecrets(project *v3.Project) bool {
+	if project.Labels == nil {
+		return false
+	}
+	return project.Labels[needsGlobalPrivateRegistryPullSecret] == "true"
 }
