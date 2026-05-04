@@ -200,9 +200,9 @@ func generateProvisionedClusterDockerConfig(cluster *v3.Cluster, secretLister v1
 		return v2ProvRegistryURL, nil, err
 	}
 
-	configJson, err := ConvertToDockerConfigJson(registrySecret.Type, v2ProvRegistryURL, registrySecret.Data)
+	configJson, err := ConvertToDockerConfigJson(v2ProvRegistryURL, registrySecret)
 	if err != nil {
-		return "", nil, fmt.Errorf("clusterDeploy: failed to convert pull secret to json: %w", err)
+		return "", nil, fmt.Errorf("clusterDeploy: failed to convert pull secret to json for cluster %s: %w", cluster.Name, err)
 	}
 
 	// note:
@@ -234,7 +234,7 @@ func generateImportedClusterDockerConfig(cluster *v3.Cluster, secretLister v1.Se
 			return "", nil, fmt.Errorf("failed to get pull secret %s in namespace %s for cluster %s: %w", pullSecret.Name, pullSecret.Namespace, cluster.Name, err)
 		}
 
-		configJson, err := ConvertToDockerConfigJson(sec.Type, clusterSystemDefaultURL, sec.Data)
+		configJson, err := ConvertToDockerConfigJson(clusterSystemDefaultURL, sec)
 		if err != nil {
 			return "", nil, fmt.Errorf("clusterDeploy: failed to convert pull secret to json: %w", err)
 		}

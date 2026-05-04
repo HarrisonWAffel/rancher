@@ -26,74 +26,91 @@ func TestConvertToDockerConfigJson(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		secretType  corev1.SecretType
-		data        map[string][]byte
+		secret      *corev1.Secret
 		expectedErr string
 		validate    func(t *testing.T, got []byte)
 	}{
 		{
-			name:       "rke auth-config: valid",
-			secretType: v1.AuthConfigSecretType,
-			data:       map[string][]byte{"auth": []byte("myuser:mypass")},
+			name: "rke auth-config: valid",
+			secret: &corev1.Secret{
+				Type: v1.AuthConfigSecretType,
+				Data: map[string][]byte{"auth": []byte("myuser:mypass")},
+			},
 			validate: func(t *testing.T, got []byte) {
 				assert.JSONEq(t, string(buildExpectedDockerConfigJSON("myuser", "mypass")), string(got))
 			},
 		},
 		{
-			name:        "rke auth-config: missing auth key",
-			secretType:  v1.AuthConfigSecretType,
-			data:        map[string][]byte{},
+			name: "rke auth-config: missing auth key",
+			secret: &corev1.Secret{
+				Type: v1.AuthConfigSecretType,
+				Data: map[string][]byte{},
+			},
 			expectedErr: "'auth' key not found in 'rke.cattle.io/auth-config' secret",
 		},
 		{
-			name:        "rke auth-config: malformed auth value (no colon delimiter)",
-			secretType:  v1.AuthConfigSecretType,
-			data:        map[string][]byte{"auth": []byte("nodelimiter")},
+			name: "rke auth-config: malformed auth value (no colon delimiter)",
+			secret: &corev1.Secret{
+				Type: v1.AuthConfigSecretType,
+				Data: map[string][]byte{"auth": []byte("myusermypass")},
+			},
 			expectedErr: "'auth' value in 'rke.cattle.io/auth-config' is not in username:password format",
 		},
 		{
-			name:       "basic-auth: valid",
-			secretType: corev1.SecretTypeBasicAuth,
-			data: map[string][]byte{
-				"username": []byte("myuser"),
-				"password": []byte("mypass"),
+			name: "basic-auth: valid",
+			secret: &corev1.Secret{
+				Type: corev1.SecretTypeBasicAuth,
+				Data: map[string][]byte{
+					"username": []byte("myuser"),
+					"password": []byte("mypass"),
+				},
 			},
 			validate: func(t *testing.T, got []byte) {
 				assert.JSONEq(t, string(buildExpectedDockerConfigJSON("myuser", "mypass")), string(got))
 			},
 		},
 		{
-			name:        "basic-auth: missing username",
-			secretType:  corev1.SecretTypeBasicAuth,
-			data:        map[string][]byte{"password": []byte("mypass")},
+			name: "basic-auth: missing username",
+			secret: &corev1.Secret{
+				Type: corev1.SecretTypeBasicAuth,
+				Data: map[string][]byte{"password": []byte("mypass")},
+			},
 			expectedErr: "secret kubernetes.io/basic-auth has no 'username' field",
 		},
 		{
-			name:        "basic-auth: missing password",
-			secretType:  corev1.SecretTypeBasicAuth,
-			data:        map[string][]byte{"username": []byte("myuser")},
+			name: "basic-auth: missing password",
+			secret: &corev1.Secret{
+				Type: corev1.SecretTypeBasicAuth,
+				Data: map[string][]byte{"username": []byte("myuser")},
+			},
 			expectedErr: "secret kubernetes.io/basic-auth has no 'password' field",
 		},
 		{
-			name:       "dockerconfigjson: valid passthrough",
-			secretType: corev1.SecretTypeDockerConfigJson,
-			data: map[string][]byte{
-				corev1.DockerConfigJsonKey: buildExpectedDockerConfigJSON("myuser", "mypass"),
+			name: "dockerconfigjson: valid passthrough",
+			secret: &corev1.Secret{
+				Type: corev1.SecretTypeDockerConfigJson,
+				Data: map[string][]byte{
+					corev1.DockerConfigJsonKey: buildExpectedDockerConfigJSON("myuser", "mypass"),
+				},
 			},
 			validate: func(t *testing.T, got []byte) {
 				assert.JSONEq(t, string(buildExpectedDockerConfigJSON("myuser", "mypass")), string(got))
 			},
 		},
 		{
-			name:        "dockerconfigjson: missing key",
-			secretType:  corev1.SecretTypeDockerConfigJson,
-			data:        map[string][]byte{},
-			expectedErr: "secret kubernetes.io/dockerconfigjson has no '.dockerconfigjson' field",
+			name: "dockerconfigjson: missing key",
+			secret: &corev1.Secret{
+				Type: corev1.SecretTypeDockerConfigJson,
+				Data: map[string][]byte{},
+			},
+			expectedErr: "secret 'kubernetes.io/dockerconfigjson' has no '.dockerconfigjson' field",
 		},
 		{
-			name:        "unsupported secret type",
-			secretType:  "some.other/type",
-			data:        map[string][]byte{},
+			name: "unsupported secret type",
+			secret: &corev1.Secret{
+				Type: "some.other/type",
+				Data: map[string][]byte{},
+			},
 			expectedErr: "unsupported secret type: some.other/type",
 		},
 	}
@@ -102,7 +119,7 @@ func TestConvertToDockerConfigJson(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := ConvertToDockerConfigJson(tt.secretType, host, tt.data)
+			got, err := ConvertToDockerConfigJson(host, tt.secret)
 			if tt.expectedErr != "" {
 				assert.EqualError(t, err, tt.expectedErr)
 				assert.Nil(t, got)

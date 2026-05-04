@@ -13,10 +13,13 @@ import (
 
 // ConvertToDockerConfigJson converts various types of secrets into a proper .dockerconfigjson format. Specifically, rke.cattle.io/auth-config, kubernetes.io/basic-auth,
 // and kubernetes.io/dockerconfigjson secrets are supported. This is required as the Rancher UI may specify non-dockerconfigjson secrets on the management cluster.
-func ConvertToDockerConfigJson(secretType kcorev1.SecretType, registryHost string, data map[string][]byte) ([]byte, error) {
-	switch secretType {
+func ConvertToDockerConfigJson(registryHost string, secret *kcorev1.Secret) ([]byte, error) {
+	switch secret.Type {
 	case v1.AuthConfigSecretType:
-		auth, ok := data["auth"]
+		if secret.Data == nil {
+			return nil, fmt.Errorf("data is nil in 'rke.cattle.io/auth-config' secret")
+		}
+		auth, ok := secret.Data["auth"]
 		if !ok {
 			return nil, fmt.Errorf("'auth' key not found in 'rke.cattle.io/auth-config' secret")
 		}
@@ -27,23 +30,29 @@ func ConvertToDockerConfigJson(secretType kcorev1.SecretType, registryHost strin
 		return BuildDockerConfigJson(registryHost, username, password)
 	case kcorev1.SecretTypeBasicAuth:
 		// basic auth simply has a username and password key
-		username, ok := data["username"]
+		if secret.Data == nil {
+			return nil, fmt.Errorf("data is nil in 'kubernetes.io/basic-auth' secret")
+		}
+		username, ok := secret.Data["username"]
 		if !ok {
 			return nil, fmt.Errorf("secret kubernetes.io/basic-auth has no 'username' field")
 		}
-		password, ok := data["password"]
+		password, ok := secret.Data["password"]
 		if !ok {
 			return nil, fmt.Errorf("secret kubernetes.io/basic-auth has no 'password' field")
 		}
 		return BuildDockerConfigJson(registryHost, string(username), string(password))
 	case kcorev1.SecretTypeDockerConfigJson:
-		cfg, ok := data[kcorev1.DockerConfigJsonKey]
+		if secret.Data == nil {
+			return nil, fmt.Errorf("data is nil in 'kubernetes.io/dockerconfigjson' secret")
+		}
+		cfg, ok := secret.Data[kcorev1.DockerConfigJsonKey]
 		if !ok {
-			return nil, fmt.Errorf("secret kubernetes.io/dockerconfigjson has no '.dockerconfigjson' field")
+			return nil, fmt.Errorf("secret 'kubernetes.io/dockerconfigjson' has no '.dockerconfigjson' field")
 		}
 		return cfg, nil
 	default:
-		return nil, fmt.Errorf("unsupported secret type: %s", secretType)
+		return nil, fmt.Errorf("unsupported secret type: %s", secret.Type)
 	}
 }
 

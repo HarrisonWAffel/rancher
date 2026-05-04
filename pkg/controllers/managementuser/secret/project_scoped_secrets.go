@@ -289,7 +289,7 @@ func (n *namespaceHandler) onSettingEnqueueNamespace(_, _ string, obj runtime.Ob
 		logrus.Errorf("unable to convert object: %[1]v, type: %[1]T to a setting", obj)
 		return nil, nil
 	}
-	if setting.Name != settings.SystemDefaultRegistryPullSecrets.Name {
+	if setting.Name != settings.SystemDefaultRegistryPullSecrets.Name && setting.Name != settings.SystemDefaultRegistry.Name {
 		return nil, nil
 	}
 
@@ -302,7 +302,12 @@ func (n *namespaceHandler) onSettingEnqueueNamespace(_, _ string, obj runtime.Ob
 	for _, namespace := range allNamespaces {
 		namespaceKeys = append(namespaceKeys, relatedresource.Key{Name: namespace.Name})
 	}
-	return namespaceKeys, err
+
+	if err != nil {
+		logrus.Errorf("encountered erroring getting project namespace keys: %v", err)
+	}
+
+	return namespaceKeys, nil
 }
 
 // secretEnqueueNamespace enqueues all the project namespaces of a project scoped secret.

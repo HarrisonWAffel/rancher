@@ -429,7 +429,7 @@ func Test_namespaceHandler_onSettingEnqueueNamespace(t *testing.T) {
 			wantKeys: nil,
 		},
 		{
-			name: "correct setting, no projects found",
+			name: "correct setting (pull secrets), no projects found",
 			obj: &v3.Setting{
 				ObjectMeta: metav1.ObjectMeta{Name: settings.SystemDefaultRegistryPullSecrets.Name},
 			},
@@ -439,7 +439,7 @@ func Test_namespaceHandler_onSettingEnqueueNamespace(t *testing.T) {
 			wantKeys: []relatedresource.Key{},
 		},
 		{
-			name: "correct setting, non system-project skipped",
+			name: "correct setting (pull secrets), non system-project skipped",
 			obj: &v3.Setting{
 				ObjectMeta: metav1.ObjectMeta{Name: settings.SystemDefaultRegistryPullSecrets.Name},
 			},
@@ -451,7 +451,7 @@ func Test_namespaceHandler_onSettingEnqueueNamespace(t *testing.T) {
 			wantKeys: []relatedresource.Key{},
 		},
 		{
-			name: "correct setting, system project found",
+			name: "correct setting (pull secrets), system project found",
 			obj: &v3.Setting{
 				ObjectMeta: metav1.ObjectMeta{Name: settings.SystemDefaultRegistryPullSecrets.Name},
 			},
@@ -472,7 +472,7 @@ func Test_namespaceHandler_onSettingEnqueueNamespace(t *testing.T) {
 			},
 		},
 		{
-			name: "error listing projects",
+			name: "error listing projects (pull secrets setting)",
 			obj: &v3.Setting{
 				ObjectMeta: metav1.ObjectMeta{Name: settings.SystemDefaultRegistryPullSecrets.Name},
 			},
@@ -483,9 +483,79 @@ func Test_namespaceHandler_onSettingEnqueueNamespace(t *testing.T) {
 			wantErr:  true,
 		},
 		{
-			name: "error listing namespaces, no successful namespaces",
+			name: "error listing namespaces, no successful namespaces (pull secrets setting)",
 			obj: &v3.Setting{
 				ObjectMeta: metav1.ObjectMeta{Name: settings.SystemDefaultRegistryPullSecrets.Name},
+			},
+			setupProjectCache: func(f *fake.MockCacheInterface[*v3.Project]) {
+				f.EXPECT().List("c-abc", gomock.Any()).Return([]*v3.Project{
+					{ObjectMeta: metav1.ObjectMeta{Name: "p-system", Labels: systemProjectLabels}},
+				}, nil)
+			},
+			setupNamespaceCache: func(f *fake.MockNonNamespacedCacheInterface[*corev1.Namespace]) {
+				f.EXPECT().List(gomock.Any()).Return(nil, errDefault)
+			},
+			wantKeys: nil,
+			wantErr:  true,
+		},
+		{
+			name: "correct setting (default registry), no projects found",
+			obj: &v3.Setting{
+				ObjectMeta: metav1.ObjectMeta{Name: settings.SystemDefaultRegistry.Name},
+			},
+			setupProjectCache: func(f *fake.MockCacheInterface[*v3.Project]) {
+				f.EXPECT().List("c-abc", gomock.Any()).Return([]*v3.Project{}, nil)
+			},
+			wantKeys: []relatedresource.Key{},
+		},
+		{
+			name: "correct setting (default registry), non system-project skipped",
+			obj: &v3.Setting{
+				ObjectMeta: metav1.ObjectMeta{Name: settings.SystemDefaultRegistry.Name},
+			},
+			setupProjectCache: func(f *fake.MockCacheInterface[*v3.Project]) {
+				f.EXPECT().List("c-abc", gomock.Any()).Return([]*v3.Project{
+					{ObjectMeta: metav1.ObjectMeta{Name: "p-user", Labels: map[string]string{needsGlobalPrivateRegistryPullSecret: "true"}}},
+				}, nil)
+			},
+			wantKeys: []relatedresource.Key{},
+		},
+		{
+			name: "correct setting (default registry), system project found",
+			obj: &v3.Setting{
+				ObjectMeta: metav1.ObjectMeta{Name: settings.SystemDefaultRegistry.Name},
+			},
+			setupProjectCache: func(f *fake.MockCacheInterface[*v3.Project]) {
+				f.EXPECT().List("c-abc", gomock.Any()).Return([]*v3.Project{
+					{ObjectMeta: metav1.ObjectMeta{Name: "p-system", Labels: systemProjectLabels}},
+				}, nil)
+			},
+			setupNamespaceCache: func(f *fake.MockNonNamespacedCacheInterface[*corev1.Namespace]) {
+				f.EXPECT().List(gomock.Any()).Return([]*corev1.Namespace{
+					{ObjectMeta: metav1.ObjectMeta{Name: "cattle-system"}},
+					{ObjectMeta: metav1.ObjectMeta{Name: "cattle-fleet-system"}},
+				}, nil)
+			},
+			wantKeys: []relatedresource.Key{
+				{Name: "cattle-system"},
+				{Name: "cattle-fleet-system"},
+			},
+		},
+		{
+			name: "error listing projects (default registry setting)",
+			obj: &v3.Setting{
+				ObjectMeta: metav1.ObjectMeta{Name: settings.SystemDefaultRegistry.Name},
+			},
+			setupProjectCache: func(f *fake.MockCacheInterface[*v3.Project]) {
+				f.EXPECT().List("c-abc", gomock.Any()).Return(nil, errDefault)
+			},
+			wantKeys: nil,
+			wantErr:  true,
+		},
+		{
+			name: "error listing namespaces, no successful namespaces (default registry setting)",
+			obj: &v3.Setting{
+				ObjectMeta: metav1.ObjectMeta{Name: settings.SystemDefaultRegistry.Name},
 			},
 			setupProjectCache: func(f *fake.MockCacheInterface[*v3.Project]) {
 				f.EXPECT().List("c-abc", gomock.Any()).Return([]*v3.Project{

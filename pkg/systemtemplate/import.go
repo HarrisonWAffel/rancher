@@ -148,7 +148,7 @@ func SystemTemplate(resp io.Writer, agentImage, authImage, namespace, token, url
 
 	registryURL, registryConfig, err := util.GeneratePrivateRegistryEncodedDockerConfig(cluster, secretLister)
 	if err != nil {
-		logrus.Errorf("[system-template] failed to generate registry config when deploying cattle cluster agent: %v", err)
+		logrus.Errorf("[system-template] failed to generate registry config when deploying cattle cluster agent for cluster %s: %v", cluster.Name, err)
 		return err
 	}
 
