@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"time"
 
 	v3 "github.com/rancher/rancher/pkg/apis/management.cattle.io/v3"
 	"github.com/rancher/rancher/pkg/cluster"
@@ -57,6 +58,7 @@ type namespaceHandler struct {
 	clusterNamespaceCache  wcorev1.NamespaceCache
 	projectCache           mgmtv3.ProjectCache
 	secretClient           wcorev1.SecretClient
+	settingsController     mgmtv3.SettingController
 	clusterName            string
 }
 
@@ -68,6 +70,7 @@ func RegisterProjectScopedSecretHandler(ctx context.Context, cluster *config.Use
 		managementSecretCache:  cluster.Management.Wrangler.Core.Secret().Cache(),
 		managementSecretClient: cluster.Management.Wrangler.Core.Secret(),
 		projectCache:           cluster.Management.Wrangler.Mgmt.Project().Cache(),
+		settingsController:     cluster.Management.Wrangler.Mgmt.Setting(),
 	}
 
 	cluster.Corew.Namespace().OnChange(ctx, namespaceChangeHandler, n.OnChange)
@@ -294,17 +297,15 @@ func (n *namespaceHandler) onSettingEnqueueNamespace(_, _ string, obj runtime.Ob
 	}
 
 	allNamespaces, err := n.getNamespacesForGlobalPullSecretProjects()
-	if err != nil && len(allNamespaces) == 0 {
+	if err != nil {
+		logrus.Errorf("encountered erroring getting project namespace keys, reenqueuing pull secrets setting: %v", err)
+		n.settingsController.EnqueueAfter(settings.SystemDefaultRegistryPullSecrets.Name, time.Second*2)
 		return nil, err
 	}
 
 	namespaceKeys := make([]relatedresource.Key, 0, len(allNamespaces))
 	for _, namespace := range allNamespaces {
 		namespaceKeys = append(namespaceKeys, relatedresource.Key{Name: namespace.Name})
-	}
-
-	if err != nil {
-		logrus.Errorf("encountered erroring getting project namespace keys: %v", err)
 	}
 
 	return namespaceKeys, nil
@@ -415,10 +416,12 @@ func (n *namespaceHandler) getNamespacesFromSecret(secret *corev1.Secret) ([]*co
 	return n.clusterNamespaceCache.List(labels.NewSelector().Add(*r))
 }
 
-// getGlobalPullSecrets retrieves the pull secrets specified by the SystemDefaultRegistryPullSecrets setting
-// directly by name from the management secret cache. Secrets that are not of type kubernetes.io/dockerconfigjson
-// are silently skipped rather than causing an error, because we do not want a single misconfigured secret to
-// block reconciliation of all project-scoped secrets in the namespace.
+// getGlobalPullSecrets retrieves the pull secrets specified in the SystemDefaultRegistryPullSecrets setting
+// and returns copies of those secrets which have been relabeled to indicate that they are not source secrets.
+// The returned secrets can be safely synchronized into project namespaces without impacting future list operations for
+// source secrets. Secrets that are not of type kubernetes.io/dockerconfigjson are silently skipped
+// rather than causing an error, as we don't want a single misconfigured secret to block reconciliation of
+// all project-scoped secrets in the namespace.
 func (n *namespaceHandler) getGlobalPullSecrets() ([]*corev1.Secret, error) {
 	// check the global setting to see what's currently configured
 	registry, _ := cluster.GetPrivateRegistry(nil)

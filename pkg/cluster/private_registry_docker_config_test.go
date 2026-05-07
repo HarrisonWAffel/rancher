@@ -27,7 +27,7 @@ func TestConvertToDockerConfigJson(t *testing.T) {
 	tests := []struct {
 		name        string
 		secret      *corev1.Secret
-		expectedErr string
+		expectedErr error
 		validate    func(t *testing.T, got []byte)
 	}{
 		{
@@ -46,7 +46,7 @@ func TestConvertToDockerConfigJson(t *testing.T) {
 				Type: v1.AuthConfigSecretType,
 				Data: map[string][]byte{},
 			},
-			expectedErr: "'auth' key not found in 'rke.cattle.io/auth-config' secret",
+			expectedErr: ErrAuthKeyNotFound,
 		},
 		{
 			name: "rke auth-config: malformed auth value (no colon delimiter)",
@@ -54,7 +54,7 @@ func TestConvertToDockerConfigJson(t *testing.T) {
 				Type: v1.AuthConfigSecretType,
 				Data: map[string][]byte{"auth": []byte("myusermypass")},
 			},
-			expectedErr: "'auth' value in 'rke.cattle.io/auth-config' is not in username:password format",
+			expectedErr: ErrAuthMalformed,
 		},
 		{
 			name: "basic-auth: valid",
@@ -75,7 +75,7 @@ func TestConvertToDockerConfigJson(t *testing.T) {
 				Type: corev1.SecretTypeBasicAuth,
 				Data: map[string][]byte{"password": []byte("mypass")},
 			},
-			expectedErr: "secret kubernetes.io/basic-auth has no 'username' field",
+			expectedErr: ErrUsernameNotFound,
 		},
 		{
 			name: "basic-auth: missing password",
@@ -83,7 +83,7 @@ func TestConvertToDockerConfigJson(t *testing.T) {
 				Type: corev1.SecretTypeBasicAuth,
 				Data: map[string][]byte{"username": []byte("myuser")},
 			},
-			expectedErr: "secret kubernetes.io/basic-auth has no 'password' field",
+			expectedErr: ErrPasswordNotFound,
 		},
 		{
 			name: "dockerconfigjson: valid passthrough",
@@ -103,7 +103,7 @@ func TestConvertToDockerConfigJson(t *testing.T) {
 				Type: corev1.SecretTypeDockerConfigJson,
 				Data: map[string][]byte{},
 			},
-			expectedErr: "secret 'kubernetes.io/dockerconfigjson' has no '.dockerconfigjson' field",
+			expectedErr: ErrDockerConfigKeyNotFound,
 		},
 		{
 			name: "unsupported secret type",
@@ -111,7 +111,7 @@ func TestConvertToDockerConfigJson(t *testing.T) {
 				Type: "some.other/type",
 				Data: map[string][]byte{},
 			},
-			expectedErr: "unsupported secret type: some.other/type",
+			expectedErr: ErrUnsupportedSecretType,
 		},
 	}
 
@@ -120,8 +120,8 @@ func TestConvertToDockerConfigJson(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			got, err := ConvertToDockerConfigJson(host, tt.secret)
-			if tt.expectedErr != "" {
-				assert.EqualError(t, err, tt.expectedErr)
+			if tt.expectedErr != nil {
+				assert.ErrorIs(t, err, tt.expectedErr)
 				assert.Nil(t, got)
 				return
 			}
@@ -196,7 +196,7 @@ func TestUnwrapDockerConfigJson(t *testing.T) {
 		expectedUsername string
 		expectedPassword string
 		expectedAuth     string
-		expectedErr      string
+		expectedErr      error
 		// errContains is used instead of expectedErr when the error format may vary (e.g. stdlib errors).
 		errContains string
 	}{
@@ -212,7 +212,7 @@ func TestUnwrapDockerConfigJson(t *testing.T) {
 			name:        "missing .dockerconfigjson key",
 			host:        host,
 			data:        map[string][]byte{},
-			expectedErr: ".dockerconfigjson not found in secret",
+			expectedErr: ErrDockerConfigJsonNotFound,
 		},
 		{
 			name:        "invalid JSON",
@@ -224,7 +224,7 @@ func TestUnwrapDockerConfigJson(t *testing.T) {
 			name:        "hostname not found in auths",
 			host:        "other.registry.example.com",
 			data:        makeConfigJSON(host, "myuser", "mypass"),
-			expectedErr: "registry hostname not found in secret",
+			expectedErr: ErrRegistryHostnameNotFound,
 		},
 	}
 
@@ -233,8 +233,8 @@ func TestUnwrapDockerConfigJson(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			username, password, auth, err := UnwrapDockerConfigJson(tt.host, tt.data)
-			if tt.expectedErr != "" {
-				assert.EqualError(t, err, tt.expectedErr)
+			if tt.expectedErr != nil {
+				assert.ErrorIs(t, err, tt.expectedErr)
 				return
 			}
 			if tt.errContains != "" {

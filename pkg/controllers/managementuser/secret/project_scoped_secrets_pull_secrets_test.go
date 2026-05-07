@@ -3,6 +3,7 @@ package secret
 import (
 	"reflect"
 	"testing"
+	"time"
 
 	v3 "github.com/rancher/rancher/pkg/apis/management.cattle.io/v3"
 	"github.com/rancher/rancher/pkg/cluster"
@@ -404,12 +405,13 @@ func Test_namespaceHandler_onSettingEnqueueNamespace(t *testing.T) {
 	}
 
 	tests := []struct {
-		name                string
-		obj                 runtime.Object
-		setupProjectCache   func(*fake.MockCacheInterface[*v3.Project])
-		setupNamespaceCache func(*fake.MockNonNamespacedCacheInterface[*corev1.Namespace])
-		wantKeys            []relatedresource.Key
-		wantErr             bool
+		name                    string
+		obj                     runtime.Object
+		setupProjectCache       func(*fake.MockCacheInterface[*v3.Project])
+		setupNamespaceCache     func(*fake.MockNonNamespacedCacheInterface[*corev1.Namespace])
+		setupSettingsController func(*fake.MockNonNamespacedControllerInterface[*v3.Setting, *v3.SettingList])
+		wantKeys                []relatedresource.Key
+		wantErr                 bool
 	}{
 		{
 			name:     "nil object",
@@ -479,6 +481,9 @@ func Test_namespaceHandler_onSettingEnqueueNamespace(t *testing.T) {
 			setupProjectCache: func(f *fake.MockCacheInterface[*v3.Project]) {
 				f.EXPECT().List("c-abc", gomock.Any()).Return(nil, errDefault)
 			},
+			setupSettingsController: func(f *fake.MockNonNamespacedControllerInterface[*v3.Setting, *v3.SettingList]) {
+				f.EXPECT().EnqueueAfter(settings.SystemDefaultRegistryPullSecrets.Name, time.Second*2)
+			},
 			wantKeys: nil,
 			wantErr:  true,
 		},
@@ -494,6 +499,9 @@ func Test_namespaceHandler_onSettingEnqueueNamespace(t *testing.T) {
 			},
 			setupNamespaceCache: func(f *fake.MockNonNamespacedCacheInterface[*corev1.Namespace]) {
 				f.EXPECT().List(gomock.Any()).Return(nil, errDefault)
+			},
+			setupSettingsController: func(f *fake.MockNonNamespacedControllerInterface[*v3.Setting, *v3.SettingList]) {
+				f.EXPECT().EnqueueAfter(settings.SystemDefaultRegistryPullSecrets.Name, time.Second*2)
 			},
 			wantKeys: nil,
 			wantErr:  true,
@@ -549,6 +557,9 @@ func Test_namespaceHandler_onSettingEnqueueNamespace(t *testing.T) {
 			setupProjectCache: func(f *fake.MockCacheInterface[*v3.Project]) {
 				f.EXPECT().List("c-abc", gomock.Any()).Return(nil, errDefault)
 			},
+			setupSettingsController: func(f *fake.MockNonNamespacedControllerInterface[*v3.Setting, *v3.SettingList]) {
+				f.EXPECT().EnqueueAfter(settings.SystemDefaultRegistryPullSecrets.Name, time.Second*2)
+			},
 			wantKeys: nil,
 			wantErr:  true,
 		},
@@ -565,6 +576,9 @@ func Test_namespaceHandler_onSettingEnqueueNamespace(t *testing.T) {
 			setupNamespaceCache: func(f *fake.MockNonNamespacedCacheInterface[*corev1.Namespace]) {
 				f.EXPECT().List(gomock.Any()).Return(nil, errDefault)
 			},
+			setupSettingsController: func(f *fake.MockNonNamespacedControllerInterface[*v3.Setting, *v3.SettingList]) {
+				f.EXPECT().EnqueueAfter(settings.SystemDefaultRegistryPullSecrets.Name, time.Second*2)
+			},
 			wantKeys: nil,
 			wantErr:  true,
 		},
@@ -580,9 +594,14 @@ func Test_namespaceHandler_onSettingEnqueueNamespace(t *testing.T) {
 			if tt.setupNamespaceCache != nil {
 				tt.setupNamespaceCache(namespaceCache)
 			}
+			settingsController := fake.NewMockNonNamespacedControllerInterface[*v3.Setting, *v3.SettingList](ctrl)
+			if tt.setupSettingsController != nil {
+				tt.setupSettingsController(settingsController)
+			}
 			n := &namespaceHandler{
 				projectCache:          projectCache,
 				clusterNamespaceCache: namespaceCache,
+				settingsController:    settingsController,
 				clusterName:           "c-abc",
 			}
 
