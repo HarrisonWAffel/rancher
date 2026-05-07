@@ -953,9 +953,7 @@ func Test_areSecretsSame(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := areSecretsSame(tt.s1, tt.s2)
-			if got != tt.want {
-				t.Errorf("areSecretsSame() = %v, want %v", got, tt.want)
-			}
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
@@ -977,35 +975,15 @@ func Test_getNamespacedSecret(t *testing.T) {
 
 	got := getNamespacedSecret(src, "target-namespace")
 
-	if got.Name != src.Name {
-		t.Errorf("Name = %q, want %q", got.Name, src.Name)
-	}
-	if got.Namespace != "target-namespace" {
-		t.Errorf("Namespace = %q, want %q", got.Namespace, "target-namespace")
-	}
-	if got.Type != src.Type {
-		t.Errorf("Type = %v, want %v", got.Type, src.Type)
-	}
-	if !reflect.DeepEqual(got.Data, src.Data) {
-		t.Errorf("Data not copied correctly")
-	}
-	if got.Labels["lkey"] != "lval" {
-		t.Errorf("Labels not copied: got %v", got.Labels)
-	}
-	if got.Annotations["akey"] != "aval" {
-		t.Errorf("Annotations not copied: got %v", got.Annotations)
-	}
-	if got.Annotations[userSecretAnnotation] != "true" {
-		t.Errorf("userSecretAnnotation not set: got %q", got.Annotations[userSecretAnnotation])
-	}
-	if got.Annotations[pssCopyAnnotation] != "true" {
-		t.Errorf("pssCopyAnnotation not set: got %q", got.Annotations[pssCopyAnnotation])
-	}
+	assert.Equal(t, src.Name, got.Name)
+	assert.Equal(t, "target-namespace", got.Namespace)
+	assert.Equal(t, src.Type, got.Type)
+	assert.Equal(t, src.Data, got.Data)
+	assert.Equal(t, "lval", got.Labels["lkey"])
+	assert.Equal(t, "aval", got.Annotations["akey"])
+	assert.Equal(t, "true", got.Annotations[userSecretAnnotation])
+	assert.Equal(t, "true", got.Annotations[pssCopyAnnotation])
 	// Verify the source is not mutated.
-	if src.Annotations[userSecretAnnotation] != "old-value" {
-		t.Errorf("getNamespacedSecret() mutated source annotation")
-	}
-	if src.Namespace != "src-namespace" {
-		t.Errorf("getNamespacedSecret() mutated source namespace")
-	}
+	assert.Equal(t, "old-value", src.Annotations[userSecretAnnotation])
+	assert.Equal(t, "src-namespace", src.Namespace)
 }

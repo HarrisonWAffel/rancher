@@ -343,10 +343,7 @@ func (n *namespaceHandler) getNamespacesFromGlobalPullSecret(secret *corev1.Secr
 	if secret.Labels == nil {
 		return nil, nil
 	}
-	_, ok := secret.Labels[ProjectScopedSecretLabel]
-	if ok {
-		return nil, nil
-	}
+
 	_, isDefaultRegistrySecret := secret.Labels[cluster.SourcePullSecretLabel]
 	if !isDefaultRegistrySecret {
 		// It's not a global pull secret, nothing to do.
