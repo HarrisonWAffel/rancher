@@ -2,7 +2,7 @@ package autoscaler
 
 import (
 	"bytes"
-	"strings"
+	"fmt"
 
 	provv2 "github.com/rancher/rancher/pkg/apis/provisioning.cattle.io/v1"
 	"github.com/rancher/rancher/pkg/cluster"
@@ -80,6 +80,9 @@ func (h *autoscalerHandler) ensureRootHelmOpSecrets() (string, string, error) {
 	// If the chart is coming from the GSDR, then the pull secrets will have already been configured by CAPR and a global copy is not needed.
 	registry, _ := cluster.GetPrivateRegistry(nil)
 	if registry == nil || registry.URL == autoScalerChartRepositoryHost() {
+		if err := h.deleteSecretIfExists("fleet-default", autoscalerChartImagePullSecretName); err != nil {
+			return "", "", err
+		}
 		return helmOpSecret.Name, "", nil
 	}
 
@@ -183,6 +186,9 @@ func (h *autoscalerHandler) upsertSecret(namespace, secretName string, secretTyp
 	if existing != nil {
 		if !secretDataEqual(existing.Data, data) {
 			updated := existing.DeepCopy()
+			if secretType != "" {
+				updated.Type = secretType
+			}
 			updated.Data = data
 			return h.secretClient.Update(updated)
 		}
@@ -230,7 +236,7 @@ func (h *autoscalerHandler) findGlobalClusterAutoScalerHostnameCreds() (string, 
 		}
 		username, password, err := cluster.ExtractUsernamePasswordFromPullSecret(autoScalerChartRepositoryHost(), sec)
 		if err != nil {
-			if strings.Contains(err.Error(), cluster.ErrRegistryHostnameNotFound) {
+			if err.Error() == fmt.Sprintf(cluster.ErrRegistryHostnameNotFound, autoScalerChartRepositoryHost()) {
 				continue
 			}
 			return "", "", err
