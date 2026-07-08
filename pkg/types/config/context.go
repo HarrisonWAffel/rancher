@@ -259,6 +259,10 @@ func (c *ManagementContext) WithAgent(userAgent string) *ManagementContext {
 	return &mgmtCopy
 }
 
+// DeferredStart returns a fire-and-forget starter that spawns a goroutine to invoke the idempotent
+// registration + Start closure. It discards the start error (only logs it), so it must be driven by
+// a repeating trigger (e.g., an event handler on a management object) to ensure eventual success.
+// Direct/one-shot callers should use DeferredStartWithError instead.
 func (w *UserContext) DeferredStart(ctx context.Context, register func(ctx context.Context) error) func() error {
 	f := w.deferredStartAsync(ctx, register)
 	return func() error {
@@ -271,6 +275,17 @@ func (w *UserContext) DeferredStart(ctx context.Context, register func(ctx conte
 	}
 }
 
+// DeferredStartWithError returns a starter that runs synchronously
+// and returns any underlying errors from 'register' function. The starter is
+// idempotent and safe to call repeatedly. It can be retried until register
+// returns a nil error, after which point it becomes a no-op.
+func (w *UserContext) DeferredStartWithError(ctx context.Context, register func(ctx context.Context) error) func() error {
+	return w.deferredStartAsync(ctx, register)
+}
+
+// deferredStartAsync returns a stateful registration function which wraps the provided 'register' function in a controller handler transaction.
+// This function is safe to call multiple times if the initial registration does not succeed, and will become a no-op once the provided
+// register function is successfully started.
 func (w *UserContext) deferredStartAsync(ctx context.Context, register func(ctx context.Context) error) func() error {
 	var (
 		startLock sync.Mutex

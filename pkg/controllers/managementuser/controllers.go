@@ -23,11 +23,13 @@ import (
 	"github.com/rancher/rancher/pkg/controllers/managementuserlegacy"
 	"github.com/rancher/rancher/pkg/features"
 	"github.com/rancher/rancher/pkg/generated/controllers/upgrade.cattle.io"
+	nv3 "github.com/rancher/rancher/pkg/generated/norman/management.cattle.io/v3"
 	"github.com/rancher/rancher/pkg/impersonation"
 	"github.com/rancher/rancher/pkg/types/config"
 	"github.com/rancher/rancher/pkg/wrangler"
 	"github.com/sirupsen/logrus"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 func Register(ctx context.Context, mgmt *config.ScaledContext, cluster *config.UserContext, clusterRec *apimgmtv3.Cluster, kubeConfigGetter common.KubeConfigGetter) error {
@@ -45,27 +47,50 @@ func Register(ctx context.Context, mgmt *config.ScaledContext, cluster *config.U
 	// For the local cluster, register nodesyncer immediately without waiting for CAPI.
 	// The nodesyncer can work without CAPI for the local cluster since
 	// isClusterRestoring() is skipped for local clusters (see nodessyncer.go:reconcileAll).
-	// For other clusters, we still need to wait for CAPI to be ready because
-	// registerProvV2 requires CAPI resources.
+	// For other clusters, we still need to wait for CAPI to be ready because both the node syncer
+	// and the controllers within 'registerProvV2' rely on CAPI resources.
 	if cluster.ClusterName == "local" {
-		_ = cluster.DeferredStart(ctx, func(ctx context.Context) error {
+		// DeferredStartWithError is used in both cases to generate a stateful controller starter function, which is then
+		// invoked using dedicated onChange controllers. This ensures that transient network errors encountered when
+		// contacting the downstream cluster which prevent the registration from initially succeeding
+		// will be retried via controller backoff + resync.
+		starter := cluster.DeferredStartWithError(ctx, func(ctx context.Context) error {
 			nodesyncer.Register(ctx, cluster, nil, kubeConfigGetter)
 			return nil
-		})()
+		})
+		cluster.Management.Management.Clusters("").AddHandler(ctx, "local-deferred-node-syncer-start",
+			func(key string, obj *nv3.Cluster) (runtime.Object, error) {
+				if obj == nil || obj.Name != cluster.ClusterName {
+					return obj, nil
+				}
+				err := starter()
+				if err != nil {
+					logrus.Errorf("[STARTER-ERROR] Error starting node sync controllers for local cluster: %v", err)
+				}
+				return obj, err
+			})
 	}
 
 	mgmt.Wrangler.DeferredCAPIRegistration.DeferFunc(func(capi *wrangler.CAPIContext) {
-		err := cluster.DeferredStart(ctx, func(ctx context.Context) error {
+		starter := cluster.DeferredStartWithError(ctx, func(ctx context.Context) error {
 			// For non-local clusters, register nodesyncer with CAPI context
 			if cluster.ClusterName != "local" {
 				nodesyncer.Register(ctx, cluster, capi, kubeConfigGetter)
 			}
 			registerProvV2(ctx, cluster, capi, clusterRec)
 			return nil
-		})()
-		if err != nil {
-			logrus.Errorf("failed to start cluster manager: %v", err)
-		}
+		})
+		cluster.Management.Management.Clusters("").AddHandler(ctx, "user-controllers-capi-deferred-start-"+cluster.ClusterName,
+			func(key string, obj *nv3.Cluster) (runtime.Object, error) {
+				if obj == nil || obj.Name != cluster.ClusterName {
+					return obj, nil
+				}
+				err := starter()
+				if err != nil {
+					logrus.Errorf("[STARTER-ERROR] Error starting provv2 controllers for cluster %s: %v", cluster.ClusterName, err)
+				}
+				return obj, err
+			})
 	})
 
 	registerCaches(cluster)
