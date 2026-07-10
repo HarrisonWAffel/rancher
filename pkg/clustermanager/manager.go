@@ -107,6 +107,7 @@ func (m *Manager) RESTConfig(cluster *apimgmtv3.Cluster) (rest.Config, error) {
 func (m *Manager) markUnavailable(clusterName string) {
 	if cluster, err := m.clusters.Get(clusterName, metav1.GetOptions{}); err == nil {
 		if !apimgmtv3.ClusterConditionReady.IsFalse(cluster) {
+			logrus.Infof("[manager mark-unavailable] Marking cluster %s unavailable", clusterName)
 			apimgmtv3.ClusterConditionReady.False(cluster)
 			m.clusters.Update(cluster)
 		}
@@ -128,6 +129,7 @@ func (m *Manager) start(ctx context.Context, cluster *apimgmtv3.Cluster, control
 
 	clusterRecord, err := m.toRecord(ctx, cluster)
 	if err != nil {
+		logrus.Errorf("[manager] failed to start cluster record, marking cluster %s as unavailable: %v", cluster.Name, err)
 		m.markUnavailable(cluster.Name)
 		return nil, err
 	}
@@ -137,6 +139,7 @@ func (m *Manager) start(ctx context.Context, cluster *apimgmtv3.Cluster, control
 
 	obj, _ = m.controllers.LoadOrStore(cluster.UID, clusterRecord)
 	if err := m.startController(obj.(*record), controllers, clusterOwner); err != nil {
+		logrus.Errorf("[manager] failed to start cluster controllers, marking cluster %s as unavailable: %v", cluster.Name, err)
 		m.markUnavailable(cluster.Name)
 		return nil, err
 	}
@@ -154,7 +157,7 @@ func (m *Manager) startController(r *record, controllers, clusterOwner bool) err
 	if !r.started {
 		go func() {
 			if err := m.doStart(r, clusterOwner); err != nil {
-				logrus.Errorf("failed to start cluster controllers %s: %v", r.cluster.ClusterName, err)
+				logrus.Errorf("[manager] failed to start cluster controllers %s: %v", r.cluster.ClusterName, err)
 				m.markUnavailable(r.clusterRec.Name)
 				m.Stop(r.clusterRec)
 			}
@@ -194,6 +197,7 @@ func (m *Manager) doStart(rec *record, clusterOwner bool) (exit error) {
 		// To work around this, now we try to get a namespace from the API, even if not found, it means the API is up.
 		if _, err := rec.cluster.K8sClient.CoreV1().Namespaces().Get(rec.ctx, "kube-system", metav1.GetOptions{}); err != nil && !apierrors.IsNotFound(err) {
 			if i == 2 {
+				logrus.Errorf("[manager] failed to get kube-system namespace while starting controllers, marking cluster %s as unavailable: %v", rec.clusterRec.Name, err)
 				m.markUnavailable(rec.cluster.ClusterName)
 			}
 			select {

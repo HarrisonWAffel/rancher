@@ -65,11 +65,19 @@ func Register(ctx context.Context, workload *config.UserContext) {
 		componentStatuses: workload.Corew.ComponentStatus(),
 		unversionedClient: workload.UnversionedClient,
 	}
-
+	go func() {
+		logrus.Infof("[health-check] starting health syncer for cluster %s", workload.ClusterName)
+		for range ticker.Context(ctx, time.Second*5) {
+			logrus.Infof("[health-check] Checker is still running for cluster %s", workload.ClusterName)
+		}
+	}()
 	go h.syncHealth(ctx, syncInterval)
 }
 
 func (h *HealthSyncer) syncHealth(ctx context.Context, syncHealth time.Duration) {
+	defer func() {
+		logrus.Infof("[health-syncer] stopping health syncer for cluster %s, somehow", h.clusterName)
+	}()
 	for range ticker.Context(ctx, syncHealth) {
 		err := h.updateClusterHealth()
 		if err != nil && !apierrors.IsConflict(err) {
@@ -88,6 +96,7 @@ func (h *HealthSyncer) getComponentStatus(cluster *v3.Cluster) error {
 
 	cluster.Status.ComponentStatuses = []v32.ClusterComponentStatus{}
 	if cluster.Status.Version == nil {
+		logrus.Errorf("[health-syncer getComponentStatus] Cluster %s has no version", cluster.Name)
 		return nil
 	}
 	parts := versionMatchRE.FindStringSubmatch(cluster.Status.Version.String())
@@ -150,11 +159,11 @@ func IsAPIUp(ctx context.Context, ns typedv1.NamespaceInterface) error {
 func (h *HealthSyncer) updateClusterHealth() error {
 	oldCluster, err := h.getCluster()
 	if err != nil {
-		return err
+		return fmt.Errorf("Failed to get cluster: %v", err)
 	}
 	cluster := oldCluster.DeepCopy()
 	if !v32.ClusterConditionProvisioned.IsTrue(cluster) {
-		logrus.Debugf("Skip updating cluster health - cluster [%s] not provisioned yet", h.clusterName)
+		logrus.Debugf("[health-syncer] Skip updating cluster health - cluster [%s] not provisioned yet", h.clusterName)
 		return nil
 	}
 
@@ -184,7 +193,7 @@ func (h *HealthSyncer) updateClusterHealth() error {
 	}
 
 	if !reflect.DeepEqual(oldCluster, newObj) {
-		logrus.Tracef("[healthSyncer] update cluster %s", cluster.Name)
+		logrus.Tracef("[health-syncer] update cluster %s", cluster.Name)
 		if _, err := h.clusters.Update(newObj.(*v3.Cluster)); err != nil {
 			return errors.Wrapf(err, "[updateClusterHealth] Failed to update cluster [%s]", cluster.Name)
 		}
