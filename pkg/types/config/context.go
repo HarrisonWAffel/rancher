@@ -259,8 +259,11 @@ func (c *ManagementContext) WithAgent(userAgent string) *ManagementContext {
 	return &mgmtCopy
 }
 
-func (w *UserContext) DeferredStart(ctx context.Context, register func(ctx context.Context) error) func() error {
-	f := w.deferredStartAsync(ctx, register)
+// DeferredStartAsync returns a stateful fire-and-forget starter function which invokes the provided 'register' function using a controller
+// transaction and restarts the user controller factory associated with the UserContext. It discards any errors it encounters
+// (only logging them), so it must be driven by a repeating trigger (e.g., an event handler) to ensure eventual success.
+func (w *UserContext) DeferredStartAsync(ctx context.Context, register func(ctx context.Context) error) func() error {
+	f := w.UserControllersDeferredStart(ctx, register)
 	return func() error {
 		go func() {
 			if err := f(); err != nil {
@@ -271,7 +274,20 @@ func (w *UserContext) DeferredStart(ctx context.Context, register func(ctx conte
 	}
 }
 
-func (w *UserContext) deferredStartAsync(ctx context.Context, register func(ctx context.Context) error) func() error {
+// UserControllersDeferredStart returns a stateful idempotent starter function which invokes the provided 'register'
+// function using a controller handler transaction derived from the provided context. It then starts
+// the user controller factory associated with the current user context and commits the transaction.
+// After a successful execute the starter will become a no-op.
+func (w *UserContext) UserControllersDeferredStart(ctx context.Context, register func(ctx context.Context) error) func() error {
+	return deferredStart(ctx, register, w.Start)
+}
+
+// deferredStart returns a stateful 'starter' function which invokes the provided 'register' and 'start' functions using a new
+// cancellable context and controller transaction derived from the provided context. The function returned by deferredStart
+// is idempotent and may be called multiple times concurrently, so long as both the 'register' and 'start' functions are also idempotent.
+// If either the 'register' or 'start' functions return an error, the transaction will be rolled back and the derived context canceled.
+// Once both functions are successfully invoked, the starter will become a permanent no-op
+func deferredStart(ctx context.Context, register func(ctx context.Context) error, start func(context.Context) error) func() error {
 	var (
 		startLock sync.Mutex
 		started   = false
@@ -293,12 +309,14 @@ func (w *UserContext) deferredStartAsync(ctx context.Context, register func(ctx 
 			return err
 		}
 
-		if err := w.Start(cancelCtx); err != nil {
+		if err := start(cancelCtx); err != nil {
 			cancel()
 			transaction.Rollback()
 			return err
 		}
 
+		// commit modifies the controller handler chain
+		// and resync's the entire chain once.
 		transaction.Commit()
 		started = true
 		go func() {
@@ -468,6 +486,9 @@ func NewUserContext(scaledContext *ScaledContext, config rest.Config, clusterNam
 	return context, err
 }
 
+// Start starts the controller factories associated with the user context. Lasso controller factories
+// are safe to call multiple times and, unless a controller for a new GVK is registered, will no-op.
+// If a new GVK is registered, that controller factory will be started appropriately.
 func (w *UserContext) Start(pctx context.Context) error {
 	w.extraControllerFactoriesMutex.Lock()
 	defer w.extraControllerFactoriesMutex.Unlock()

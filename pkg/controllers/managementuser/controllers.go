@@ -45,27 +45,28 @@ func Register(ctx context.Context, mgmt *config.ScaledContext, cluster *config.U
 	// For the local cluster, register nodesyncer immediately without waiting for CAPI.
 	// The nodesyncer can work without CAPI for the local cluster since
 	// isClusterRestoring() is skipped for local clusters (see nodessyncer.go:reconcileAll).
-	// For other clusters, we still need to wait for CAPI to be ready because
-	// registerProvV2 requires CAPI resources.
+	// For other clusters, we still need to wait for CAPI to be ready because both the node syncer
+	// and the controllers within 'registerProvV2' rely on CAPI resources.
 	if cluster.ClusterName == "local" {
-		_ = cluster.DeferredStart(ctx, func(ctx context.Context) error {
-			nodesyncer.Register(ctx, cluster, nil, kubeConfigGetter)
-			return nil
-		})()
+		nodesyncer.Register(ctx, cluster, nil, kubeConfigGetter)
 	}
 
 	mgmt.Wrangler.DeferredCAPIRegistration.DeferFunc(func(capi *wrangler.CAPIContext) {
-		err := cluster.DeferredStart(ctx, func(ctx context.Context) error {
-			// For non-local clusters, register nodesyncer with CAPI context
+		starter := cluster.UserControllersDeferredStart(ctx, func(ctx context.Context) error {
 			if cluster.ClusterName != "local" {
+				// For non-local clusters, register nodesyncer with CAPI context
 				nodesyncer.Register(ctx, cluster, capi, kubeConfigGetter)
 			}
 			registerProvV2(ctx, cluster, capi, clusterRec)
 			return nil
-		})()
-		if err != nil {
-			logrus.Errorf("failed to start cluster manager: %v", err)
-		}
+		})
+
+		// a handler is registered to ensure that transient startup failures (e.g. a network error during cache hydration)
+		// do not permanently stall the node syncer and provv2 controllers out. After one successful registration the
+		// handler becomes a no-op. This follows an established pattern also used by the network policies handler
+		// (see networkpolicy/register.go:19) and resource quota handlers (see resourcequota/register.go:23)
+		cluster.Management.Management.Clusters("").AddHandler(ctx, "capi-deferred-start-"+cluster.ClusterName,
+			deferredStartClusterHandler(cluster.ClusterName, starter))
 	})
 
 	registerCaches(cluster)
@@ -95,6 +96,15 @@ func Register(ctx context.Context, mgmt *config.ScaledContext, cluster *config.U
 	}
 
 	return managementuserlegacy.Register(ctx, mgmt, cluster, clusterRec, kubeConfigGetter)
+}
+
+func deferredStartClusterHandler(clusterName string, starter func() error) nv3.ClusterHandlerFunc {
+	return func(key string, obj *nv3.Cluster) (runtime.Object, error) {
+		if obj == nil || obj.Name != clusterName {
+			return obj, nil
+		}
+		return obj, starter()
+	}
 }
 
 func registerProvV2(ctx context.Context, cluster *config.UserContext, capi *wrangler.CAPIContext, clusterRec *apimgmtv3.Cluster) {
