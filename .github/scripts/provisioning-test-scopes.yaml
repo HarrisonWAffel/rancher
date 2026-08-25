@@ -39,6 +39,10 @@
 #          core functionality like the planner, where changes could impact all of provisioning.
 #          Valid entries can be package paths, or absolute file paths.
 #
+#   kdm  : A set of tests that should be run in the KDM repo to perform regression checks against
+#         new rke2/k3s versions. This set of tests do not run in Rancher, but are tracked in this repo
+#         to keep the test matrix close to the actual test implementation, reducing configuration drift.
+#
 #   skip : Documents coverage gaps. This scope runs nothing, and is identical
 #          to leaving a path unlisted. It exists to prevent accidental
 #          inclusion of these paths in the future.
@@ -161,6 +165,17 @@ scopes:
 #    tests:
 #      - { dist: k3s,  regex: '^Test_Imported_Operation_(SetE_Imported|SetD_.*LifecycleHook).*$' }
 #      - { dist: rke2,  regex: '^Test_Imported_Operation_(SetE_Imported|SetD_.*LifecycleHook).*$' }
+
+# the KDM section tracks the tests that should run on each KDM PR when bumping rke2/k3s.
+# This section is metadata queried by KDM, and is not triggered when a full match is found in Rancher, or when ALL=1.
+# The test set should be updated as new test cases which rely on distro level behavior are added.
+kdm:
+  tests:
+    - { regex: '^Test_Provisioning_.*$' }
+    - { regex: '^Test_Operation_SetA_.*$' }
+    - { regex: '^Test_Operation_SetB_.*$' }
+    - { regex: '^Test_Operation_SetC_.*$' }
+    - { regex: '^Test_Imported_Operation_(SetE_Imported|SetD_.*LifecycleHook).*$' }
 
 full:
   - '^pkg/controllers/capr/controllers.go'
