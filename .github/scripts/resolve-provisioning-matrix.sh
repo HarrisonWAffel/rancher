@@ -196,8 +196,8 @@ resolve_explicit_scopes() {
   local selected="" scope
   for scope in $EXPLICIT_SCOPES; do
     if ! printf '%s\n' "$EXPLICIT_SCOPE_NAMES" | grep -qw -- "$scope"; then
-      echo "warning: ignoring requested scope '$scope', not declared under 'explicit' in $CONFIG" >&2
-      continue
+      echo "fatal: requested scope '$scope', not declared under 'explicit' in $CONFIG" >&2
+      exit 1
     fi
     selected="$(add_scope "$selected" "$scope")"
   done
