@@ -1,0 +1,41 @@
+# Report Nightly Provisioning Tests summarizes the results of multiple nightly provisioning test workflows run
+# across different release branches. If any branch had failures, it posts a single Slack message via webhook
+# with one card per failing branch listing the failing jobs and a link to the run. Passing branches are omitted,
+# and nothing is posted at all if every branch passed.
+name: Report Nightly Provisioning Tests
+on:
+  schedule:
+    # Runs every weekday at 10:00 UTC
+    # (6AM EST, 3AM PST, 12PM CEST)
+    - cron: '0 10 * * 1-5'
+
+jobs:
+  collect-runs:
+    runs-on: ubuntu-latest
+    outputs:
+      # these outputs are set in report-nightly-provisioning-failures.sh
+      any-failures: ${{ steps.collect.outputs.any-failures }}
+      slack-payload: ${{ steps.collect.outputs.slack-payload }}
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: collect-runs
+        id: collect
+        run: bash .github/scripts/report-nightly-provisioning-failures.sh
+
+  notify-slack:
+    needs: collect-runs
+    if: needs.collect-runs.outputs.any-failures == 'true'
+    runs-on: ubuntu-latest
+    env:
+      SLACK_PAYLOAD: ${{ needs.collect-runs.outputs.slack-payload }}
+    steps:
+      - name: Get Webhook URL
+        uses: rancher-eio/read-vault-secrets@main
+        with:
+          secrets: |
+            secret/data/github/repo/${{ github.repository }}/slack/nightly-provisioning-tests/credentials webhookUrl | WEBHOOK_URL
+      - name: Post failures to Slack
+        run: |
+          curl -sf -X POST -H 'Content-type: application/json' --data "$SLACK_PAYLOAD" "$WEBHOOK_URL"
