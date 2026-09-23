@@ -45,9 +45,14 @@ jobs:
     permissions:
       actions: write
     steps:
+      - name: Get PAT
+        uses: rancher-eio/read-vault-secrets@0da85151ad1f19ed7986c41587e45aac1ace74b6
+        with:
+          secrets: |
+            secret/data/github/repo/${{ github.repository }}/TBD PAT | PAT
       - name: Rerun failed jobs
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ env.PAT }}
           RUN_ID: ${{ github.event.workflow_run.id }}
         run: |
           gh api \
