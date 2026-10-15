@@ -25,13 +25,13 @@ import (
 
 const mgmtClusterNameAnn = "provisioning.cattle.io/management-cluster-name"
 
-// Test_Provisioning_Custom_RecreateWithSameManagementClusterName creates a custom provisioning cluster pinned to a
+// Test_Custom_Provisioning_SetB_RecreateWithSameManagementClusterName creates a custom provisioning cluster pinned to a
 // management cluster name via the provisioning.cattle.io/management-cluster-name annotation, then deletes and
 // immediately recreates it with the same name and annotation (the equivalent of `kubectl replace --force`). Custom
 // cluster deletion does not remove the node infrastructure, so the original node (and its agent connection) stays
 // alive while the replacement is registered with a new node. The replacement cluster must come up with a new
 // management cluster that does not carry over state (i.e. the CA cert) from the previous one.
-func Test_Provisioning_Custom_RecreateWithSameManagementClusterName(t *testing.T) {
+func Test_Custom_Provisioning_SetB_RecreateWithSameManagementClusterName(t *testing.T) {
 	clients, err := clients.New()
 	if err != nil {
 		t.Fatal(err)

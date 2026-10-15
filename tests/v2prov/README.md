@@ -48,7 +48,7 @@ You can customize the tests you run through the use of the environment variables
 `V2PROV_TEST_RUN_REGEX` is a regex string indicating the pattern of tests to match. You can selectively run tests by setting this, for example:
 
 ```
-V2PROV_TEST_RUN_REGEX=Test_Operation_Custom_EncryptionKeyRotation V2PROV_TEST_DIST=rke2 make provisioning-tests
+V2PROV_TEST_RUN_REGEX=Test_Custom_Operation_SetA_EncryptionKeyRotation V2PROV_TEST_DIST=rke2 make provisioning-tests
 ```
 
-would specifically run the `Test_Operation_Custom_EncryptionKeyRotation` test with RKE2.
+would specifically run the `Test_Custom_Operation_SetA_EncryptionKeyRotation` test with RKE2.

@@ -24,7 +24,7 @@
 #       keeps triggering unconditionally via package-paths.
 #
 #   scopes.<name>.tests : the matrix rows to run when this scope is selected. Each row:
-#       dist        (required) -> V2PROV_TEST_DIST        (k3s | rke2)
+#       dist        (optional) -> V2PROV_TEST_DIST        (k3s | rke2; omit to run on both)
 #       regex       (required) -> V2PROV_TEST_RUN_REGEX   (go test -run regex)
 #       features    (optional) -> CATTLE_FEATURES         (omit when unused)
 #       cpus        (optional) -> V2PROV_TEST_CPUS        (16 by default)
@@ -63,12 +63,12 @@ explicit:
       - { dist: rke2, regex: '^Test_Imported_Operation_SetE_Imported.*$' }
       - { dist: k3s,  regex: '^Test_Imported_Operation_SetD_.*LifecycleHook.*$' }
       - { dist: rke2, regex: '^Test_Imported_Operation_SetD_.*LifecycleHook.*$' }
-      - { dist: k3s,  regex: '^Test_Provisioning_.*$' }
-      - { dist: rke2, regex: '^Test_(General|Provisioning|Provisioning_Custom|Fleet)_.*$' }
-      - { dist: k3s,  regex: '^Test_Operation_.*$' } # k3s runs all ops in one instance
-      - { dist: rke2, regex: '^Test_Operation_SetA_.*$', parallelism: 2 }
-      - { dist: rke2, regex: '^Test_Operation_SetB_.*EtcdSnapshotOperationsOnNew.*$', parallelism: 3 }
-      - { dist: rke2, regex: '^Test_Operation_SetB_MP_EtcdSnapshotOperationsWithThreeEtcdNodesOnNewNode$' }
+      - { dist: k3s,  regex: '^Test_(Custom|MP)_Provisioning_.*$' }
+      - { dist: rke2, regex: '^Test_(General|Custom_Provisioning|MP_Provisioning|Fleet)_.*$' }
+      - { dist: k3s,  regex: '^Test_(Custom|MP)_Operation_.*$' } # k3s runs all ops in one instance
+      - { dist: rke2, regex: '^Test_(Custom|MP)_Operation_SetA_.*$', parallelism: 2 }
+      - { dist: rke2, regex: '^Test_(Custom|MP)_Operation_SetB_EtcdSnapshotOperationsOnNew.*$', parallelism: 3 }
+      - { dist: rke2, regex: '^Test_MP_Operation_SetB_EtcdSnapshotOperationsWithThreeEtcdNodesOnNewNode$' }
       - { dist: k3s,  regex: '^Test_Imported_Operation_SetD_(ImportedETCDSnapshotSave|ImportedETCDSnapshotRestore)$', cpus: 8 }
       - { dist: k3s,  regex: '^Test_Imported_Operation_SetD_(ImportedDisableSingleNode|ImportedDisableMultiNode)$', cpus: 8 }
       - { dist: k3s,  regex: '^Test_Imported_Operation_SetD_(ImportedCertificateRotation_Service_Argument|ImportedCertificateRotation_Mixed_Role_Service_Argument)$', cpus: 8 }
@@ -79,7 +79,19 @@ explicit:
       - { dist: k3s,  regex: '^Test_PreBootstrap_.*$', features: 'provisioningprebootstrap=true', cpus: 8 }
 # This field could also track scopes for repos
 # which import the provisioning tests.
-# - name: kdm
+  # All KDM tests run against both rke2 and k3s, so dist is omitted from every row.
+  - name: kdm
+    tests:
+        # Each row pairs custom/machineprovisioning tests with a small imported group. Packages run
+        # concurrently, so the imported tests (one package, run serially) don't extend the row.
+        # Tests that only exercise Rancher/CAPI internals, imported lifecycle hooks, and imported
+        # day2ops disable/re-enable are intentionally excluded, as are the local-only CAPRKE2 tests.
+        - { regex: '^Test_(Custom_Provisioning_(SetA_OneNodeWithDelete|SetA_ThreeNode|SetB_UniqueRoles|SetB_ThreeNodeWithTaints)|MP_Provisioning_(SetA_.*|SetB_(Drain|DrainNoDelete|FiveNodesUniqueRolesWithDelete|FourNodesServerAndWorkerRolesWithDelete|Single_Node_.*))|Imported_Operation_SetD_(ImportedETCDSnapshotSave|ImportedETCDSnapshotRestore|ImportedCertificateRotation|ImportedCertificateRotation_Custom_Data_Dir))$' }
+        - { regex: '^Test_((Custom|MP)_Operation_SetA_.*|Imported_Operation_SetD_ImportedCertificateRotation_(Service_Argument|Mixed_Role_Service_Argument|RKE2_TLS_Args|Multi_Node))$' }
+        - { regex: '^Test_((Custom|MP)_Operation_(SetB|SetC)_.*|Imported_Operation_SetD_(ImportedEncryptionKeyRotation|ImportedEncryptionKeyRotation_MultiNodeMixedRoles)|Imported_Operation_SetE_ImportedETCDSnapshotRestore(3NodesAllRolesS3|3NodesOneEach|TokenRotation))$' }
+        # requires SOME_K8S_VERSION_PREV, otherwise these tests skip
+        - { regex: '^Test_Imported_Operation_SetD_ETCDSnapshotRestoreMode(NoneLocal|KubernetesVersionLocal|KubernetesVersionS3|AllLocal)$' }
+
 # - name: system-agent
 # - name: turtles
 
@@ -172,8 +184,8 @@ scopes:
           - 'CATTLE_K3S_VERSION'
       - path: '^trigger-basic-ci$' # created by the 'Create CI Testing PR' workflow
     tests:
-      - { dist: k3s, regex: '^Test_Provisioning_(SetA|Custom_SetA)_.*$', parallelism: 3 }
-      - { dist: rke2, regex: '^Test_(General|Provisioning_SetA|Provisioning_Custom_SetA|Fleet)_.*$', parallelism: 3 }
+      - { dist: k3s, regex: '^Test_(Custom|MP)_Provisioning_SetA_.*$', parallelism: 3 }
+      - { dist: rke2, regex: '^Test_(General|Custom_Provisioning_SetA|MP_Provisioning_SetA|Fleet)_.*$', parallelism: 3 }
 
   # day-2 ops (cert rotation, etcd snapshot, drain) on custom + machine provisioning
   operations:
@@ -188,10 +200,10 @@ scopes:
     file-paths:
       - path: '^trigger-operations-ci$' # created by the 'Create CI Testing PR' workflow
     tests:
-      - { dist: k3s,  regex: '^Test_Operation_.*$' } # k3s runs all ops in one instance. This shard is too heavily to parallelize at the moment.
-      - { dist: rke2, regex: '^Test_Operation_SetA_.*$' }
-      - { dist: rke2, regex: '^Test_Operation_SetB_.*EtcdSnapshotOperationsOnNew.*$', parallelism: 3 }
-      - { dist: rke2, regex: '^Test_Operation_SetB_MP_EtcdSnapshotOperationsWithThreeEtcdNodesOnNewNode$'}
+      - { dist: k3s,  regex: '^Test_(Custom|MP)_Operation_.*$' } # k3s runs all ops in one instance. This shard is too heavily to parallelize at the moment.
+      - { dist: rke2, regex: '^Test_(Custom|MP)_Operation_SetA_.*$' }
+      - { dist: rke2, regex: '^Test_(Custom|MP)_Operation_SetB_EtcdSnapshotOperationsOnNew.*$', parallelism: 3 }
+      - { dist: rke2, regex: '^Test_MP_Operation_SetB_EtcdSnapshotOperationsWithThreeEtcdNodesOnNewNode$'}
 
   imported:
     package-paths:

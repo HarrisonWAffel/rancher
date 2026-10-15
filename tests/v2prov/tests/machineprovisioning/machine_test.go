@@ -37,7 +37,7 @@ import (
 	"sigs.k8s.io/cluster-api/util/conditions"
 )
 
-func Test_Provisioning_SetA_MP_SingleNodeAllRolesWithDelete(t *testing.T) {
+func Test_MP_Provisioning_SetA_SingleNodeAllRolesWithDelete(t *testing.T) {
 	clients, err := clients.New()
 	if err != nil {
 		t.Fatal(err)
@@ -128,7 +128,7 @@ func Test_Provisioning_SetA_MP_SingleNodeAllRolesWithDelete(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func Test_Provisioning_SetA_MP_MultipleEtcdNodesScaledDownThenDelete(t *testing.T) {
+func Test_MP_Provisioning_SetA_MultipleEtcdNodesScaledDownThenDelete(t *testing.T) {
 	clients, err := clients.New()
 	if err != nil {
 		t.Fatal(err)
@@ -238,7 +238,7 @@ func Test_Provisioning_SetA_MP_MultipleEtcdNodesScaledDownThenDelete(t *testing.
 	assert.NoError(t, err)
 }
 
-func Test_Provisioning_SetB_MP_DrainNoDelete(t *testing.T) {
+func Test_MP_Provisioning_SetB_DrainNoDelete(t *testing.T) {
 	clients, err := clients.New()
 	if err != nil {
 		t.Fatal(err)
@@ -294,7 +294,7 @@ func Test_Provisioning_SetB_MP_DrainNoDelete(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func Test_Provisioning_SetB_MP_MachineTemplateClonedAnnotations(t *testing.T) {
+func Test_MP_Provisioning_SetB_MachineTemplateClonedAnnotations(t *testing.T) {
 	if strings.ToLower(os.Getenv("DIST")) == "rke2" {
 		t.Skip()
 	}
@@ -359,7 +359,7 @@ func Test_Provisioning_SetB_MP_MachineTemplateClonedAnnotations(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func Test_Provisioning_SetB_MP_MachineSetDeletePolicyOldestSet(t *testing.T) {
+func Test_MP_Provisioning_SetB_MachineSetDeletePolicyOldestSet(t *testing.T) {
 	if strings.ToLower(os.Getenv("DIST")) == "rke2" {
 		t.Skip()
 	}
@@ -426,7 +426,7 @@ func Test_Provisioning_SetB_MP_MachineSetDeletePolicyOldestSet(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func Test_Provisioning_SetB_MP_FiveNodesUniqueRolesWithDelete(t *testing.T) {
+func Test_MP_Provisioning_SetB_FiveNodesUniqueRolesWithDelete(t *testing.T) {
 	if strings.ToLower(os.Getenv("DIST")) == "rke2" {
 		t.Skip()
 	}
@@ -483,7 +483,7 @@ func Test_Provisioning_SetB_MP_FiveNodesUniqueRolesWithDelete(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func Test_Provisioning_SetB_MP_FourNodesServerAndWorkerRolesWithDelete(t *testing.T) {
+func Test_MP_Provisioning_SetB_FourNodesServerAndWorkerRolesWithDelete(t *testing.T) {
 	if strings.ToLower(os.Getenv("DIST")) == "rke2" {
 		t.Skip()
 	}
@@ -537,7 +537,7 @@ func Test_Provisioning_SetB_MP_FourNodesServerAndWorkerRolesWithDelete(t *testin
 	assert.NoError(t, err)
 }
 
-func Test_Provisioning_SetB_MP_Drain(t *testing.T) {
+func Test_MP_Provisioning_SetB_Drain(t *testing.T) {
 	clients, err := clients.New()
 	if err != nil {
 		t.Fatal(err)
@@ -680,7 +680,7 @@ func Test_Provisioning_SetB_MP_Drain(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func Test_Provisioning_SetB_Single_Node_All_Roles_Drain(t *testing.T) {
+func Test_MP_Provisioning_SetB_Single_Node_All_Roles_Drain(t *testing.T) {
 	clients, err := clients.New()
 	require.NoError(t, err)
 	defer clients.Close()
@@ -840,7 +840,7 @@ func Test_Provisioning_SetB_Single_Node_All_Roles_Drain(t *testing.T) {
 	}, 10*time.Minute, 10*time.Second, "cluster did not return to Ready after rollout")
 }
 
-func Test_Provisioning_SetB_Single_Node_Drain_Unhealthy_Replacement(t *testing.T) {
+func Test_MP_Provisioning_SetB_Single_Node_Drain_Unhealthy_Replacement(t *testing.T) {
 	if capr.GetRuntime(defaults.SomeK8sVersion) != capr.RuntimeRKE2 {
 		t.Skip("this test injects an RKE2 control-plane probe failure")
 	}

@@ -16,7 +16,7 @@ import (
 	"sigs.k8s.io/cluster-api/controllers/external"
 )
 
-func Test_Operation_SetC_MP_DataDirectories(t *testing.T) {
+func Test_MP_Operation_SetC_DataDirectories(t *testing.T) {
 	clients, err := clients.New()
 	if err != nil {
 		t.Fatal(err)
