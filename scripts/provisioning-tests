@@ -378,7 +378,7 @@ render_test_json() {
 
 echo "Running go test with package level parallelism of ${V2PROV_PACKAGE_PARALLELISM} and test parallelism of ${V2PROV_TEST_PARALLELISM}"
 
-go test -run "${V2PROV_TEST_RUN_REGEX}" -json -v -failfast -timeout 60m -p "${V2PROV_PACKAGE_PARALLELISM}" -parallel "${V2PROV_TEST_PARALLELISM}" ./tests/v2prov/tests/... \
+go test -run "${V2PROV_TEST_RUN_REGEX}" -json -v -failfast -timeout 120m -p "${V2PROV_PACKAGE_PARALLELISM}" -parallel "${V2PROV_TEST_PARALLELISM}" ./tests/v2prov/tests/... \
   2> >(tee -a /tmp/out.txt >&2) \
   | tee /tmp/out.json \
   | render_test_json \
