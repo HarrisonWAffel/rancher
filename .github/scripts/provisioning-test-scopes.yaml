@@ -82,16 +82,19 @@ explicit:
   # All KDM tests run against both rke2 and k3s, so dist is omitted from every row.
   - name: kdm
     tests:
-        # Each row pairs custom/machineprovisioning tests with a small imported group. Packages run
-        # concurrently, so the imported tests (one package, run serially) don't extend the row.
-        # Tests that only exercise Rancher/CAPI internals, imported lifecycle hooks, and imported
-        # day2ops disable/re-enable are intentionally excluded, as are the local-only CAPRKE2 tests.
-        - { regex: '^Test_Provisioning_.*$' }
-        - { regex: '^Test_Operation_SetA_.*$' }
-        - { regex: '^Test_Operation_SetB_.*$' }
-        # requires SOME_K8S_VERSION_PREV, otherwise these tests skip
-        - { regex: '^Test_Imported_Operation_SetD_.*$' }
-        - { regex: '^Test_Imported_Operation_SetE_.*$' }
+        # Rows are grouped by functionality and capped at 6 tests each. Tests that only exercise
+        # Rancher/CAPI internals are intentionally excluded.
+        - { regex: '^Test_Custom_Provisioning_.*$' }
+        - { regex: '^Test_MP_Provisioning_(SetA_SingleNodeAllRolesWithDelete|SetA_MultipleEtcdNodesScaledDownThenDelete|SetB_FiveNodesUniqueRolesWithDelete|SetB_FourNodesServerAndWorkerRolesWithDelete|SetB_MachineTemplateClonedAnnotations|SetB_MachineSetDeletePolicyOldestSet)$' }
+        - { regex: '^Test_MP_Provisioning_SetB_.*Drain.*$' }
+        - { regex: '^Test_(Custom|MP)_Operation_SetA_(CertificateRotation|EncryptionKeyRotation)$' }
+        - { regex: '^Test_(Custom|MP)_Operation_(SetA_EtcdSnapshotCreationRestoreInPlace|SetB_EtcdSnapshot.*)$' }
+        # Imported tests live in one package and run serially. They require SOME_K8S_VERSION_PREV, otherwise they skip.
+        - { regex: '^Test_Imported_Operation_SetD_ImportedCertificateRotation(_.*)*$' }
+        - { regex: '^Test_Imported_Operation_SetD_(ImportedEncryptionKeyRotation|ImportedEncryptionKeyRotation_MultiNodeMixedRoles|ImportedDisableSingleNode|ImportedDisableMultiNode)$' }
+        - { regex: '^Test_Imported_Operation_SetD_ETCDSnapshotRestoreMode.*$' }
+        - { regex: '^Test_Imported_Operation_(SetD_ImportedETCDSnapshotSave|SetD_ImportedETCDSnapshotRestore|SetE_ImportedETCDSnapshotRestoreColonToken|SetE_ImportedETCDSnapshotRestoreTokenRotation)$' }
+        - { regex: '^Test_Imported_Operation_SetE_ImportedETCDSnapshotRestore3Nodes.*$' }
 
 scopes:
   # general + custom + machine provisioning + fleet
