@@ -32,7 +32,7 @@ Operation tests are day 2 operation tests like encryption key rotation, certific
 
 Within the `tests` folder, there are mutliple types of tests. They notably all have a format like to ensure we do not clog up individual pipeline stages as they are resource intensive.
 
-`Test_<Category>_<TestName>`
+`Test_<Category>_<ShardSet>_<TestName>`
 
 `<Category>` corresponds to the categories listed above.
 
@@ -48,7 +48,7 @@ You can customize the tests you run through the use of the environment variables
 `V2PROV_TEST_RUN_REGEX` is a regex string indicating the pattern of tests to match. You can selectively run tests by setting this, for example:
 
 ```
-V2PROV_TEST_RUN_REGEX=Test_Operation_Custom_EncryptionKeyRotation V2PROV_TEST_DIST=rke2 make provisioning-tests
+V2PROV_TEST_RUN_REGEX=Test_Custom_Operation_SetA_EncryptionKeyRotation V2PROV_TEST_DIST=rke2 make provisioning-tests
 ```
 
-would specifically run the `Test_Operation_Custom_EncryptionKeyRotation` test with RKE2.
+would specifically run the `Test_Custom_Operation_SetA_EncryptionKeyRotation` test with RKE2.

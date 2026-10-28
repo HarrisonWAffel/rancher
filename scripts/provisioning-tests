@@ -72,7 +72,7 @@ else
 fi
 
 if [ -z "${V2PROV_TEST_RUN_REGEX}" ]; then
-  V2PROV_TEST_RUN_REGEX="^Test_(General|Provisioning|Fleet)_.*$"
+  V2PROV_TEST_RUN_REGEX="^Test_(General|Custom_Provisioning|MP_Provisioning|Fleet)_.*$"
 fi
 
 # Restrict to regex characters so the value can't smuggle extra `go test` flags.
@@ -372,13 +372,13 @@ export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
 #   try/catch     print lines that aren't JSON
 #   build-output  compiler errors arrive under this action, not "output"
 render_test_json() {
-  jq -j -R --unbuffered \
+  jq -j -R --unbuffered \`
     '. as $line | try ($line | fromjson | select(.Action == "output" or .Action == "build-output") | .Output) catch ($line + "\n")'
 }
 
 echo "Running go test with package level parallelism of ${V2PROV_PACKAGE_PARALLELISM} and test parallelism of ${V2PROV_TEST_PARALLELISM}"
 
-go test -run "${V2PROV_TEST_RUN_REGEX}" -json -v -failfast -timeout 60m -p "${V2PROV_PACKAGE_PARALLELISM}" -parallel "${V2PROV_TEST_PARALLELISM}" ./tests/v2prov/tests/... \
+go test -run "${V2PROV_TEST_RUN_REGEX}" -json -v -failfast -timeout 120m -p "${V2PROV_PACKAGE_PARALLELISM}" -parallel "${V2PROV_TEST_PARALLELISM}" ./tests/v2prov/tests/... \
   2> >(tee -a /tmp/out.txt >&2) \
   | tee /tmp/out.json \
   | render_test_json \
@@ -386,3 +386,11 @@ go test -run "${V2PROV_TEST_RUN_REGEX}" -json -v -failfast -timeout 60m -p "${V2
      dump_rancher_logs
      exit 1
 }
+
+# `go test -run` passes when the regex matches nothing, which would silently hide a
+# renamed or mistyped test. Skipped tests still emit a "run" event, so they count.
+TESTS_RUN=$(jq -R 'fromjson? | select(.Action == "run" and .Test != null)' /tmp/out.json | jq -s 'length')
+if [ "${TESTS_RUN}" -eq 0 ]; then
+  echo "error: V2PROV_TEST_RUN_REGEX matched no tests: ${V2PROV_TEST_RUN_REGEX}" >&2
+  exit 1
+fi

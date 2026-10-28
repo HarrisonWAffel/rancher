@@ -18,9 +18,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// Test_Operation_SetA_Custom_EtcdSnapshotCreationRestoreInPlace verifies each RKE configuration
+// Test_Custom_Operation_SetA_EtcdSnapshotCreationRestoreInPlace verifies each RKE configuration
 // restore mode on a custom cluster, including etcd data, KubernetesVersion, and AdditionalManifest.
-func Test_Operation_SetA_Custom_EtcdSnapshotCreationRestoreInPlace(t *testing.T) {
+func Test_Custom_Operation_SetA_EtcdSnapshotCreationRestoreInPlace(t *testing.T) {
 	clients, err := clients.New()
 	require.NoError(t, err)
 	defer clients.Close()
