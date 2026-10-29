@@ -209,14 +209,14 @@ build_and_run_rancher()
     RESTART_COUNT=0
     while sleep 2; do
         if [ "$PID" != "-1" ] && [ ! -e /proc/$PID ]; then
-            echo Rancher died
+            echo "$(date -u) Rancher died"
             dump_rancher_logs
-            echo K3s logs were:
+            echo "$(date -u) K3s logs were:"
             echo -e "-----K3S-LOG-DUMP-START-----"
             cat build/testdata/k3s.log | gzip | base64 -w 0
             echo -e "\n-----K3S-LOG-DUMP-END-----"
             set +e
-            echo Attempting to kill K3s
+            echo "$(date -u) Attempting to kill K3s"
             pkill -e k3s
             set -e
             PID=-1
@@ -228,7 +228,7 @@ build_and_run_rancher()
             sleep 5
         fi
         if [ "$PID" = "-1" ]; then
-          echo Starting rancher server using run
+          echo "$(date -u) Starting rancher server using run"
           ./scripts/run >/tmp/rancher.log 2>&1 &
           PID=$!
         fi
@@ -403,6 +403,7 @@ render_test_json() {
 }
 
 echo "Running go test with package level parallelism of ${V2PROV_PACKAGE_PARALLELISM} and test parallelism of ${V2PROV_TEST_PARALLELISM}"
+date -u
 
 go test -run "${V2PROV_TEST_RUN_REGEX}" -json -v -failfast -timeout 60m -p "${V2PROV_PACKAGE_PARALLELISM}" -parallel "${V2PROV_TEST_PARALLELISM}" ./tests/v2prov/tests/... \
   2> >(tee -a /tmp/out.txt >&2) \

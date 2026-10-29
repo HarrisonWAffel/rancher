@@ -78,9 +78,17 @@ explicit:
       - { dist: rke2, regex: '^Test_Imported_Operation_SetD_(ImportedCertificateRotation_Service_Argument|ImportedCertificateRotation_RKE2_TLS_Args|ImportedCertificateRotation_Mixed_Role_Service_Argument)$' }
       - { dist: rke2, regex: '^Test_PreBootstrap_.*$', features: 'provisioningprebootstrap=true', cpus: 8 }
       - { dist: k3s,  regex: '^Test_PreBootstrap_.*$', features: 'provisioningprebootstrap=true', cpus: 8 }
+  - name: kdm
+    tests:
+      - { regex: '^Test_Operation_SetA_.*$' }
+      - { regex: '^Test_Operation_SetB_.*$' }
+      - { regex: '^Test_Provisioning_.*$' }
+      - { regex: '^Test_Imported_Operation_SetD_(ImportedCertificateRotation|ImportedEncryptionKeyRotation).*$' }
+      - { regex: '^Test_Imported_Operation_SetD_(ETCDSnapshotRestore|ImportedETCDSnapshot).*$' }
+      - { regex: '^Test_Imported_Operation_SetE_ImportedETCDSnapshotRestore.*$' }
+
 # This field could also track scopes for repos
 # which import the provisioning tests.
-# - name: kdm
 # - name: system-agent
 # - name: turtles
 
