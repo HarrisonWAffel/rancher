@@ -421,7 +421,7 @@ func New(clients *clients.Clients, cluster *provisioningv1api.Cluster) (*provisi
 		}
 
 		if cluster.Spec.RKEConfig.Registries == nil {
-			registryConfig, err := registry.CreateOrGetRegistry(clients, cluster.Namespace, "registry-cache", false)
+			registryConfig, err := registry.CreateOrGetRegistry(clients, cluster.Namespace, "registry-cache")
 			if err != nil {
 				return nil, err
 			}

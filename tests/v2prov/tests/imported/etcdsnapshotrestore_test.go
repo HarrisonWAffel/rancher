@@ -160,6 +160,7 @@ func Test_Imported_Operation_SetD_ImportedETCDSnapshotRestore(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer cs.Close()
+	t.Parallel()
 
 	fx := setUpImportedCluster(t, cs, "test-imported-restore", []cluster.ImportedNodePool{
 		{ControlPlane: true, ETCD: true, Worker: true, Quantity: 1},
@@ -324,6 +325,7 @@ func Test_Imported_Operation_SetD_ImportedETCDSnapshotRestoreLifecycleHook(t *te
 		t.Fatal(err)
 	}
 	defer cs.Close()
+	t.Parallel()
 
 	fx := setUpImportedCluster(t, cs, "test-imported-restore-lifecycle-hook", []cluster.ImportedNodePool{
 		{ControlPlane: true, ETCD: true, Worker: true, Quantity: 1},
