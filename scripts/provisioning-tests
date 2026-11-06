@@ -76,7 +76,7 @@ if [ -z "${V2PROV_TEST_RUN_REGEX}" ]; then
 fi
 
 # Restrict to regex characters so the value can't smuggle extra `go test` flags.
-if ! printf '%s' "${V2PROV_TEST_RUN_REGEX}" | grep -qE '^[A-Za-z0-9_()|.^$*]+$'; then
+if ! printf '%s' "${V2PROV_TEST_RUN_REGEX}" | grep -qE '^[][A-Za-z0-9_()|.^$*?]+$'; then
   echo "error: invalid characters in V2PROV_TEST_RUN_REGEX: ${V2PROV_TEST_RUN_REGEX}" >&2
   exit 1
 fi

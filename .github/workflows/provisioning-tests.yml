@@ -56,7 +56,7 @@ jobs:
           COUNT="$(echo "$MATRIX" | jq '.include | length')"
 
           # Sanity cap against accidental fan-out
-          if [ "$COUNT" -gt 19 ]; then
+          if [ "$COUNT" -gt 25 ]; then
             echo "error: too many matrix entries ($COUNT)" >&2
             exit 1
           fi
@@ -76,19 +76,16 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.setup-matrix.outputs.matrix) }}
     name: Provisioning tests
-    runs-on:
-      - runs-on
-      - spot=false
-      - runner=${{ matrix.V2PROV_TEST_CPUS }}cpu-linux-x64
-      - run-id=${{ github.run_id }}
-      - disk=large
+    # V2PROV_RUNNER_FAMILY (from a scope's meta) overrides the runner preset's EC2 family.
+    runs-on: ${{ format('runs-on,spot=false,runner={0}cpu-linux-x64,run-id={1},disk=large{2}', matrix.V2PROV_TEST_CPUS, github.run_id, matrix.V2PROV_RUNNER_FAMILY && format(',family={0}', matrix.V2PROV_RUNNER_FAMILY) || '') }}
     env:
-      # The registry-cache pod exposes a host port, so use the Docker bridge IP from the runner.
-      REGISTRY: "172.17.0.2:5000"
+      # The registry-cache pod exposes host ports (5000 pull-through cache, 5050 push), so use the Docker bridge IP from the runner.
+      REGISTRY: "172.17.0.2:5050"
       DRONE_BUILD_EVENT: "${{ github.event_name }}"
       V2PROV_TEST_RUN_REGEX: "${{ matrix.V2PROV_TEST_RUN_REGEX }}"
       V2PROV_TEST_PARALLELISM: "${{ matrix.V2PROV_TEST_PARALLELISM }}"
       V2PROV_TEST_DIST: "${{ matrix.V2PROV_TEST_DIST }}"
+      V2PROV_TEST_TIMEOUT: "${{ matrix.V2PROV_TEST_TIMEOUT }}"
       CATTLE_FEATURES: "${{ matrix.CATTLE_FEATURES }}"
       TAG: ${{ github.sha }}-head
       COMMIT: ${{ github.sha }}
@@ -101,11 +98,17 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # Rows with a runner family are meant for local NVMe; fail rather than quietly run on the root EBS volume.
+      - name: Put test data on local NVMe
+        if: ${{ matrix.V2PROV_RUNNER_FAMILY }}
+        run: |
+          mkdir -p build
+          sudo .github/scripts/ensure-nvme-data-disk.sh "$GITHUB_WORKSPACE/build"
       - name: testdata
         run: mkdir -p build/testdata
       - name: Configure Docker for cgroupfs/insecure-registry
         run: |
-          echo '{"exec-opts": ["native.cgroupdriver=cgroupfs"], "insecure-registries": ["172.17.0.2:5000"]}' | sudo tee /etc/docker/daemon.json
+          echo '{"exec-opts": ["native.cgroupdriver=cgroupfs"], "insecure-registries": ["172.17.0.2:5000", "172.17.0.2:5050"]}' | sudo tee /etc/docker/daemon.json
           sudo systemctl restart docker
           sudo docker info
       - name: Download Docker images artifact
@@ -145,7 +148,8 @@ jobs:
         if: always()
         id: test_output
         run: |
-          export TESTSUITE="$(echo "${V2PROV_TEST_RUN_REGEX}" | sed 's/Test//' | tr -d '()|_^.*$')"
+          # Strip regex syntax: '?' is invalid in artifact names, and '[]?*' would act as globs in the upload path.
+          export TESTSUITE="$(echo "${V2PROV_TEST_RUN_REGEX}" | sed -e 's/Test//' -e 's/[][()|_^.*$?]//g')"
           echo "suite=${TESTSUITE}" >> $GITHUB_OUTPUT
           # out.txt is the plaintext `go test -v` rendering, out.json is the raw
           # `go test -json` event stream, which is what the JUnit conversion parses.
