@@ -196,6 +196,11 @@ if ! mountpoint -q "$ETCD_DIR"; then
     || echo "WARNING: tmpfs mount failed; k3s etcd using disk"
 fi
 
+# Bump up inode limits to prevent file exhaustion issues during provisioning tests.
+# low inode limits can prevent kubelets from coming up, causing probes to stall.
+sysctl -w fs.inotify.max_user_instances=8192
+sysctl -w fs.inotify.max_user_watches=1048576
+
 mkdir -p /var/lib/rancher/$DIST/agent/images
 grep PodTestImage ./tests/v2prov/defaults/defaults.go | cut -f2 -d'"' > /var/lib/rancher/$DIST/agent/images/pull.txt
 grep MachineProvisionImage ./pkg/settings/setting.go | cut -f4 -d'"' >> /var/lib/rancher/$DIST/agent/images/pull.txt
