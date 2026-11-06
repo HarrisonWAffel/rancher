@@ -374,6 +374,15 @@ if [ -z "${V2PROV_TEST_PARALLELISM}" ]; then
   V2PROV_TEST_PARALLELISM=1
 fi
 
+if [ -z "${V2PROV_TEST_TIMEOUT}" ]; then
+  V2PROV_TEST_TIMEOUT=60m
+fi
+
+if ! printf '%s' "${V2PROV_TEST_TIMEOUT}" | grep -qE '^[0-9]+[mh]$'; then
+  echo "error: V2PROV_TEST_TIMEOUT must be a whole number of minutes or hours (e.g. 300m, 5h), got: ${V2PROV_TEST_TIMEOUT}" >&2
+  exit 1
+fi
+
 if [ -z "${V2PROV_PACKAGE_PARALLELISM}" ]; then
   # The value 3 was chosen based off of the
   # GHA Runner configuration and test suite of rancher/rancher,
@@ -402,10 +411,10 @@ render_test_json() {
     '. as $line | try ($line | fromjson | select(.Action == "output" or .Action == "build-output") | .Output) catch ($line + "\n")'
 }
 
-echo "Running go test with package level parallelism of ${V2PROV_PACKAGE_PARALLELISM} and test parallelism of ${V2PROV_TEST_PARALLELISM}"
+echo "Running go test with package level parallelism of ${V2PROV_PACKAGE_PARALLELISM}, test parallelism of ${V2PROV_TEST_PARALLELISM}, and timeout of ${V2PROV_TEST_TIMEOUT}"
 date -u
 
-go test -run "${V2PROV_TEST_RUN_REGEX}" -json -v -failfast -timeout 60m -p "${V2PROV_PACKAGE_PARALLELISM}" -parallel "${V2PROV_TEST_PARALLELISM}" ./tests/v2prov/tests/... \
+go test -run "${V2PROV_TEST_RUN_REGEX}" -json -v -failfast -timeout "${V2PROV_TEST_TIMEOUT}" -p "${V2PROV_PACKAGE_PARALLELISM}" -parallel "${V2PROV_TEST_PARALLELISM}" ./tests/v2prov/tests/... \
   2> >(tee -a /tmp/out.txt >&2) \
   | tee /tmp/out.json \
   | render_test_json \
