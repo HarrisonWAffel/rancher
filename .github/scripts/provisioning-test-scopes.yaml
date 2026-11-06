@@ -100,11 +100,11 @@ explicit:
       V2PROV_TEST_TIMEOUT: 200m
       V2PROV_RUNNER_FAMILY: c6id
     tests:
-      - { V2PROV_TEST_RUN_REGEX: '^Test_Imported_Operation_SetD_(ImportedCertificateRotation|ImportedEncryptionKeyRotation).*$', V2PROV_TEST_RUN_ON_RELEASE: false, V2PROV_TEST_PARALLELISM: 3 }
-      - { V2PROV_TEST_RUN_REGEX: '^Test_Imported_Operation_(SetE_ImportedETCDSnapshotRestore3Nodes(AllRoles(S3AfterNodeRotation)?|OneEach)|SetD_ETCDSnapshotRestoreModeAllLocal)$', V2PROV_TEST_RUN_ON_RELEASE: false, V2PROV_TEST_PARALLELISM: 3 }
-#      - { V2PROV_TEST_RUN_REGEX: '^Test_Operation_(SetA|SetC)_.*$', V2PROV_TEST_RUN_ON_RELEASE: true }
-#      - { V2PROV_TEST_RUN_REGEX: '^Test_Operation_SetB_.*$', V2PROV_TEST_RUN_ON_RELEASE: true }
-#      - { V2PROV_TEST_RUN_REGEX: '^Test_Provisioning_.*$', V2PROV_TEST_RUN_ON_RELEASE: true }
+      - { V2PROV_TEST_RUN_REGEX: '^Test_Imported_Operation_SetD_(ImportedCertificateRotation|ImportedEncryptionKeyRotation).*$', V2PROV_TEST_RUN_ON_RELEASE: false, V2PROV_TEST_PARALLELISM: 4 }
+      - { V2PROV_TEST_RUN_REGEX: '^Test_Imported_Operation_(SetE_ImportedETCDSnapshotRestore3Nodes(AllRoles(S3AfterNodeRotation)?|OneEach)|SetD_ETCDSnapshotRestoreModeAllLocal)$', V2PROV_TEST_RUN_ON_RELEASE: false, V2PROV_TEST_PARALLELISM: 4 }
+      - { V2PROV_TEST_RUN_REGEX: '^Test_Operation_(SetA|SetC)_.*$', V2PROV_TEST_RUN_ON_RELEASE: true }
+      - { V2PROV_TEST_RUN_REGEX: '^Test_Operation_SetB_.*$', V2PROV_TEST_RUN_ON_RELEASE: true }
+      - { V2PROV_TEST_RUN_REGEX: '^Test_Provisioning_.*$', V2PROV_TEST_RUN_ON_RELEASE: true }
 
 # This field could also track scopes for repos
 # which import the provisioning tests.

@@ -259,13 +259,13 @@ yq -o=json '.' "$CONFIG" | jq -c --arg selected "$selected" '
       | ($def.tests // [])[]
       # A row without a dist runs once per distro.
       | (.V2PROV_TEST_DIST // ("rke2", "k3s")) as $dist
-      | . + {
+      # Scope meta provides defaults for every row; a value set on the row itself wins.
+      | ($def.meta // {} | with_entries(select(.key == "V2PROV_TEST_TIMEOUT" or .key == "V2PROV_RUNNER_FAMILY")))
+        + . + {
           V2PROV_TEST_DIST: $dist,
           V2PROV_TEST_CPUS: (.V2PROV_TEST_CPUS // 16),
           V2PROV_TEST_PARALLELISM: (.V2PROV_TEST_PARALLELISM // 1)
         }
-        + (if $def.meta.V2PROV_TEST_TIMEOUT then { V2PROV_TEST_TIMEOUT: $def.meta.V2PROV_TEST_TIMEOUT } else {} end)
-        + (if $def.meta.V2PROV_RUNNER_FAMILY then { V2PROV_RUNNER_FAMILY: $def.meta.V2PROV_RUNNER_FAMILY } else {} end)
     ]
   }
 '
