@@ -16,7 +16,6 @@ import (
 	"github.com/rancher/rancher/tests/v2prov/clients"
 	"github.com/rancher/rancher/tests/v2prov/cluster"
 	"github.com/rancher/rancher/tests/v2prov/objectstore"
-	"github.com/rancher/rancher/tests/v2prov/wait"
 	"github.com/rancher/wrangler/v3/pkg/name"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -162,6 +161,7 @@ func Test_Imported_Operation_SetD_ImportedETCDSnapshotRestore(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer cs.Close()
+	t.Parallel()
 
 	fx := setUpImportedCluster(t, cs, "test-imported-restore", []cluster.ImportedNodePool{
 		{ControlPlane: true, ETCD: true, Worker: true, Quantity: 1},
@@ -182,6 +182,7 @@ func Test_Imported_Operation_SetE_ImportedETCDSnapshotRestore3NodesAllRolesS3(t 
 		t.Fatal(err)
 	}
 	defer cs.Close()
+	t.Parallel()
 
 	quantity := 3
 	fx := setUpImportedCluster(t, cs, "test-imported-restore-3-nodes-all-roles-s3", []cluster.ImportedNodePool{
@@ -278,6 +279,7 @@ func Test_Imported_Operation_SetE_ImportedETCDSnapshotRestore3NodesAllRoles(t *t
 		t.Fatal(err)
 	}
 	defer cs.Close()
+	t.Parallel()
 
 	fx := setUpImportedCluster(t, cs, "test-imported-restore-3-nodes-all-roles", []cluster.ImportedNodePool{
 		{ControlPlane: true, ETCD: true, Worker: true, Quantity: 3},
@@ -298,6 +300,7 @@ func Test_Imported_Operation_SetE_ImportedETCDSnapshotRestore3NodesOneEach(t *te
 		t.Fatal(err)
 	}
 	defer cs.Close()
+	t.Parallel()
 
 	fx := setUpImportedCluster(t, cs, "test-imported-restore-3-nodes-1-each", []cluster.ImportedNodePool{
 		{ETCD: true, Quantity: 1},
@@ -333,6 +336,7 @@ func Test_Imported_Operation_SetD_ImportedETCDSnapshotRestoreLifecycleHook(t *te
 		t.Fatal(err)
 	}
 	defer cs.Close()
+	t.Parallel()
 
 	fx := setUpImportedCluster(t, cs, "test-imported-restore-lifecycle-hook", []cluster.ImportedNodePool{
 		{ControlPlane: true, ETCD: true, Worker: true, Quantity: 1},
