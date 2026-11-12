@@ -6,6 +6,9 @@ on:
       EXPLICIT_SCOPES:
         required: false
         type: string
+      MANUAL_MATRIX:
+        required: false
+        type: string
 
 permissions: {}
 jobs:
@@ -24,6 +27,7 @@ jobs:
       run: ${{ steps.build.outputs.run }}
     steps:
       - name: Checkout code
+        if: inputs.MANUAL_MATRIX == ''
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
@@ -34,17 +38,26 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           EXPLICIT_SCOPES: ${{ inputs.EXPLICIT_SCOPES }}
+          MANUAL_MATRIX: ${{ inputs.MANUAL_MATRIX }}
         run: |
           set -eo pipefail
 
-          # On a PR, diff against the base (target) SHA
-          if [ "$EVENT_NAME" = "pull_request" ]; then
-            export DIFF_BASE="$BASE_SHA"
-          elif [ -z "$EXPLICIT_SCOPES" ]; then
-            export ALL=1
-          fi
+          if [ -n "$MANUAL_MATRIX" ]; then
+            if [ -n "$EXPLICIT_SCOPES" ]; then
+              echo "error: MANUAL_MATRIX and EXPLICIT_SCOPES cannot both be set" >&2
+              exit 1
+            fi
+            MATRIX="$(printf '%s' "$MANUAL_MATRIX" | jq -c .)"
+          else
+            # On a PR, diff against the base (target) SHA
+            if [ "$EVENT_NAME" = "pull_request" ]; then
+              export DIFF_BASE="$BASE_SHA"
+            elif [ -z "$EXPLICIT_SCOPES" ]; then
+              export ALL=1
+            fi
 
-          MATRIX="$(bash .github/scripts/resolve-provisioning-matrix.sh)"
+            MATRIX="$(bash .github/scripts/resolve-provisioning-matrix.sh)"
+          fi
 
           # Expect compact {"include":[...]} JSON on a single line, bail otherwise.
           if ! echo "$MATRIX" | jq -e 'has("include") and (.include | type == "array")' >/dev/null; then

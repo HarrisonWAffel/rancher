@@ -1,0 +1,98 @@
+name: Slash provisioning tests
+run-name: "Slash provisioning tests for #${{ github.event.pull_request.number }}"
+
+# Runs the tests requested by a /ptest comment (see test-slash-command.yml). Triggered when that
+# workflow applies the ptest label. This runs in the normal pull_request sandbox: fork PRs get a
+# read-only token, no secrets, and a PR-scoped cache.
+
+on:
+  pull_request:
+    types: [labeled]
+
+permissions: {}
+
+# Re-adding the label cancels the previous run. The label name keeps unrelated labels out of the group.
+concurrency:
+  group: slash-provisioning-tests-${{ github.event.pull_request.number }}-${{ github.event.label.name }}
+  cancel-in-progress: true
+
+# Mirrors pull-request.yml
+env:
+  ARCH: amd64
+  TAG: v2.17-${{ github.sha }}-head
+  GIT_TAG: v2.17-${{ github.sha }}-head
+  HEAD_TAG: "head"
+  COMMIT: ${{ github.sha }}
+  REPOSITORY_OWNER: ${{ github.repository_owner }}
+  IMAGE: ${{ github.repository_owner }}/rancher-server
+  IMAGE_AGENT: ${{ github.repository_owner }}/rancher-agent
+  IMAGE_INSTALLER: ${{ github.repository_owner }}/system-agent-installer-rancher
+
+jobs:
+  resolve-request:
+    if: github.event.label.name == 'ptest'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: read
+      pull-requests: read
+    outputs:
+      matrix: ${{ steps.resolve.outputs.matrix }}
+    steps:
+      - name: Find latest /ptest request
+        id: resolve
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            // Must match the acknowledgement comment built in test-slash-command.yml. Other workflows also
+            // comment as github-actions[bot], so the whole comment shape is matched rather than just the
+            // marker, which another bot comment could contain by quoting user text or an earlier request.
+            const ack = /^Starting provisioning tests for ([0-9a-f]{40}), requested by @\S+\.\r?\n[\s\S]*\r?\n<!-- ptest:v1 (\{[^\r\n]*\}) -->\s*$/;
+            const headSha = context.payload.pull_request.head.sha;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              ...context.repo,
+              issue_number: context.payload.pull_request.number,
+              per_page: 100,
+            });
+            // Only trust requests written by test-slash-command.yml, not markers pasted by other commenters.
+            const request = comments
+              .filter(c => c.user.login === 'github-actions[bot]' && c.user.type === 'Bot')
+              .map(c => c.body.match(ack))
+              .filter(Boolean)
+              .map(([, sha, json]) => ({ sha, request: JSON.parse(json) }))
+              .filter(({ sha, request }) => request.sha === sha)
+              .map(({ request }) => request)
+              .pop();
+            if (!request) {
+              throw new Error('No /ptest request found on this PR. Comment /ptest to start a run.');
+            }
+            if (request.sha !== headSha) {
+              throw new Error(`The latest /ptest request was for ${request.sha}, but the PR head is ${headSha}. Comment /ptest again to test the new commit.`);
+            }
+            core.setOutput('matrix', JSON.stringify(request.matrix));
+
+  # Tests only consume the linux/amd64 images
+  build-images:
+    needs: [resolve-request]
+    runs-on: runs-on,runner=8cpu-linux-x64,image=ubuntu22-full-x64,run-id=${{ github.run_id }}
+    env:
+      ARCH: x64
+      OS: linux
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: setup and build
+        uses: $/.github/actions/build-images
+
+  # purposefully not named 'provisioning-tests', as that would cause a collision
+  # with the existing checks added to PRs for the standard CI flow.
+  adhoc-provisioning-tests:
+    needs: [resolve-request, build-images]
+    permissions:
+      contents: read
+    uses: $/.github/workflows/provisioning-tests.yml
+    with:
+      MANUAL_MATRIX: ${{ needs.resolve-request.outputs.matrix }}

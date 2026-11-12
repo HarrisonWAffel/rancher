@@ -1,0 +1,160 @@
+name: PR provisioning slash command
+run-name: "/ptest on PR #${{ github.event.issue.number }}"
+
+# Handles /ptest comments. This workflow runs in the base repository's trusted context with
+# access to ADD_TO_PROJECT_PAT, so it must NEVER check out or execute code from the PR.
+# It only validates the request, records it in an acknowledgement comment, and applies the
+# ptest label. pr-provisioning-tests.yml then runs the tests in the pull_request sandbox.
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions: {}
+
+# Defaults used for every matrix entry spawned from this command
+# N.B: Sensitive information should NEVER travel through the matrix or environment.
+env:
+  RUNNER_FAMILY: c6id # nvme enabled runner
+  TEST_PARALLELISM: 1
+  CPUS: 16
+  TEST_TIMEOUT: 60
+  PTEST_LABEL: ptest
+
+jobs:
+  ptest-command:
+    if: github.event.issue.pull_request && startsWith(github.event.comment.body, '/ptest')
+    runs-on: ubuntu-latest
+    permissions:
+      # comment on and react to the PR conversation
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Handle /ptest
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          PAT: ${{ secrets.ADD_TO_PROJECT_PAT }}
+        with:
+          script: |
+            const { comment } = context.payload;
+            const issue_number = context.issue.number;
+            const tokens = comment.body.trim().split(/\s+/);
+            if (tokens[0] !== '/ptest') {
+              return;
+            }
+
+            // The PAT checks private org membership and applies the label. Labels applied with
+            // GITHUB_TOKEN do not trigger workflows. Comments use GITHUB_TOKEN so they are authored
+            // by github-actions[bot], which pr-provisioning-tests.yml relies on.
+            const pat = getOctokit(process.env.PAT);
+
+            const react = content => github.rest.reactions.createForIssueComment({
+              ...context.repo,
+              comment_id: comment.id,
+              content,
+            });
+
+            try {
+              await pat.rest.orgs.checkMembershipForUser({
+                org: context.repo.owner,
+                username: comment.user.login,
+              });
+            } catch (err) {
+              if (err.status !== 404) {
+                throw err;
+              }
+              // No comment for non-members so the command can't be used to make the bot spam PRs.
+              core.notice(`${comment.user.login} is not a member of ${context.repo.owner}`);
+              await react('-1');
+              return;
+            }
+
+            const parseMatrix = args => {
+              if (args.length < 1 || args.length > 16) {
+                throw new Error('Expected 1 to 16 entries: `/ptest <DISTRO>,<TEST_REGEX> [...]`.');
+              }
+              const artifactNames = new Set();
+              const include = args.map((arg, i) => {
+                const comma = arg.indexOf(',');
+                const distro = comma < 0 ? 'rke2' : (arg.slice(0, comma) || 'rke2');
+                const regex = comma < 0 ? arg : arg.slice(comma + 1);
+            
+                // The allowed characters also keep the regex from closing the HTML comment marker below.
+                if (!['rke2', 'k3s'].includes(distro) ||
+                    !regex || regex.length > 256 || /[^A-Za-z0-9_()[\]|.^$*?]/.test(regex)) {
+                  throw new Error(`Entry ${i + 1}: use rke2 or k3s and a test regex of at most 256 characters supported by scripts/provisioning-tests.`);
+                }
+            
+                const suite = regex.replace('Test', '').replace(/[\][()|_^.*$?]/g, '');
+                const artifactName = `${distro}-${suite}`;
+                if (!suite || suite.length > 120 || artifactNames.has(artifactName)) {
+                  throw new Error(`Entry ${i + 1}: each entry must produce a unique, nonempty test result name of at most 120 characters per distribution.`);
+                }
+                artifactNames.add(artifactName);
+              
+                // N.B: Sensitive information should NEVER travel through the matrix.
+                return {
+                  V2PROV_TEST_DIST: distro,
+                  V2PROV_TEST_RUN_REGEX: regex,
+                  V2PROV_TEST_CPUS: parseInt(process.env.CPUS, 10),
+                  V2PROV_TEST_PARALLELISM: parseInt(process.env.TEST_PARALLELISM, 10),
+                  V2PROV_TEST_TIMEOUT: parseInt(process.env.TEST_TIMEOUT, 10),
+                  V2PROV_RUNNER_FAMILY: process.env.RUNNER_FAMILY,
+                };
+              });
+              return { include };
+            };
+
+            try {
+              const matrix = parseMatrix(tokens.slice(1));
+
+              const { data: pr } = await github.rest.pulls.get({
+                ...context.repo,
+                pull_number: issue_number,
+              });
+              if (pr.state !== 'open') {
+                throw new Error('/ptest requires an open PR.');
+              }
+              if (pr.mergeable === false) {
+                throw new Error('This PR has merge conflicts, so GitHub will not run pull_request workflows for it.');
+              }
+
+              // slash-provisioning-tests.yml reads the request back from this marker, and only runs
+              // if the PR head still matches the SHA recorded here. It identifies this comment by its
+              // first line and trailing marker, so keep both in sync with its parser.
+              const request = JSON.stringify({ sha: pr.head.sha, matrix });
+              await github.rest.issues.createComment({
+                ...context.repo,
+                issue_number,
+                body: [
+                  `Starting provisioning tests for ${pr.head.sha}, requested by @${comment.user.login}.`,
+                  '',
+                  'Matrix:',
+                  '```json',
+                  JSON.stringify(matrix),
+                  '```',
+                  '',
+                  `Results will appear in this PR's [checks](${pr.html_url}/checks) as **Adhoc provisioning tests**.`,
+                  `<!-- ptest:v1 ${request} -->`,
+                ].join('\n'),
+              });
+
+              // Remove the label first so re-adding it fires a new labeled event.
+              const label = process.env.PTEST_LABEL;
+              try {
+                await pat.rest.issues.removeLabel({ ...context.repo, issue_number, name: label });
+              } catch (err) {
+                if (err.status !== 404) {
+                  throw err;
+                }
+              }
+              await pat.rest.issues.addLabels({ ...context.repo, issue_number, labels: [label] });
+              await react('rocket');
+            } catch (err) {
+              await github.rest.issues.createComment({
+                ...context.repo,
+                issue_number,
+                body: `/ptest was not started: ${err.message}\n\nUsage: \`/ptest rke2,Test_Example k3s,Test_Other\` (1 to 16 entries). See the [workflow logs](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}) for details.`,
+              });
+              core.setFailed(err.message);
+            }
