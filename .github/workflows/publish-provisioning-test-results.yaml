@@ -31,3 +31,4 @@ jobs:
           event-name: ${{ github.event.workflow_run.event }}
           # download the fork's artifacts from the run that triggered this handler
           run-id: ${{ github.event.workflow_run.id }}
+          run-attempt: ${{ github.event.workflow_run.run_attempt }}

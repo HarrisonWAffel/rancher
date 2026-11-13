@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
 # Iterates over the most recent nightly provisioning tests workflows (past 9 hours) and
-# identifies which ones have failed. For each failing branch, the latest test output XML file
-# is downloaded and used to create a single failure bundle.json file. We check branches listed in the provisioning-test-scopes.yaml's
+# identifies which ones have failed. For each failing branch, the final attempt's test output XML
+# artifact (xml-results-attempt<N>) is downloaded and used to create a single failure bundle.json file. We check branches listed in the provisioning-test-scopes.yaml's
 # explicit.nightly.meta.branches list.
 #
 # For each branch, only a run's 3rd attempt (by default) counts as a real failure, and only if
@@ -74,6 +74,7 @@ for branch in $TARGET_BRANCHES; do
     # alert on human-run attempts
     head_sha=""
     run_id=""
+    run_attempt=""
     for candidate_id in $failing_run_ids; do
     log "Checking if $candidate_id was triggered by the correct bot actor"
     run_details=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${candidate_id}")
@@ -81,6 +82,7 @@ for branch in $TARGET_BRANCHES; do
     if [[ "$triggering_actor" = "${BOT_ACTOR}" || "$triggering_actor" = "github-actions[bot]" ]]; then
       run_id="$candidate_id"
       head_sha=$(jq -er '.head_sha | select(type == "string" and length > 0)' <<< "$run_details") || exit 1
+      run_attempt=$(jq -er '.run_attempt | select(type == "number")' <<< "$run_details") || exit 1
       break
     fi
     done
@@ -97,16 +99,17 @@ for branch in $TARGET_BRANCHES; do
     run_dir="./${branch}-${run_id}-artifacts"
     mkdir -p $run_dir
 
-    # Download the raw XML output of the failing run. This artifact includes the specific tests
-    # and logs for failing tests. There isn't a way to associate an artifact with a specific test
-    # attempt, so we are stuck just looking at the most recent one.
+    # Download the raw XML output of the run's final attempt. This artifact includes the specific tests
+    # and logs for failing tests.
+    xml_artifact="xml-results-attempt${run_attempt}"
     artifact_id="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/artifacts?per_page=100" \
-    --jq '[.artifacts[] | select(.expired == false and .name == "XML Results")]
-          | sort_by(.created_at) | last | .id // empty')"
+      | jq -r --arg name "$xml_artifact" \
+        '[.artifacts[] | select(.expired == false and .name == $name)]
+         | sort_by(.created_at) | last | .id // empty')"
 
     artifact_dir="${run_dir}/set-${run_id}"
     if [ -z "$artifact_id" ]; then
-      log "no XML artifacts published for run ${run_id} on branch ${branch}. Bundling failing job names only"
+      log "no ${xml_artifact} artifact published for run ${run_id} on branch ${branch}. Bundling failing job names only"
     else
       zip_file="${artifact_dir}.zip"
       mkdir -p "$artifact_dir"
@@ -126,15 +129,25 @@ for branch in $TARGET_BRANCHES; do
       exit 1
     }
 
-    # One time conversion of xml -> json
+    # One time conversion of xml -> json. The final attempt's artifact also carries the reports of
+    # legs last run in an earlier attempt (named test-results-<dist>-<suite>-attempt<N>.xml), so
+    # only keep the reports produced by the final attempt.
     files=()
-    for file in "$run_dir"/*; do
-    if [ -f "$file" ]; then
-      if [[ "$file" == *.xml ]]; then
-        yq --xml-attribute-prefix="" -p=xml -o=json "$file" > "${file%.xml}.json"
-        files+=("${file%.xml}.json")
+    for xml_file in "$run_dir"/*.xml; do
+      if [ ! -f "$xml_file" ]; then
+        continue
       fi
-    fi
+
+      report_name="$(basename "$xml_file")"
+      report_attempt="$(echo "$report_name" | sed -E 's/^.*-attempt([0-9]+)\.xml$/\1/')"
+      if [ "$report_attempt" != "$run_attempt" ]; then
+        log "skipping ${report_name}, it was not produced by attempt ${run_attempt}"
+        continue
+      fi
+
+      json_file="$(echo "$xml_file" | sed -E 's/\.xml$/.json/')"
+      yq --xml-attribute-prefix="" -p=xml -o=json "$xml_file" > "$json_file"
+      files+=("$json_file")
     done
 
     log "building bundle.json"
@@ -148,10 +161,12 @@ for branch in $TARGET_BRANCHES; do
         --argjson jobs "$failing_job_names" \
         --arg branch "$branch" \
         --arg run_url "$run_url" \
+        --argjson run_attempt "$run_attempt" \
         --arg head_sha "$head_sha" \
         '{
           branch: $branch,
           run_url: $run_url,
+          run_attempt: $run_attempt,
           head_sha: $head_sha,
           failures: [
             $jobs[]
@@ -174,6 +189,7 @@ for branch in $TARGET_BRANCHES; do
     --argjson jobs "$failing_job_names" \
     --arg branch "$branch" \
     --arg run_url "$run_url" \
+    --argjson run_attempt "$run_attempt" \
     --arg head_sha "$head_sha" \
     '
     # A lone <testsuite>/<testcase> element without siblings is emitted as a
@@ -207,7 +223,7 @@ for branch in $TARGET_BRANCHES; do
     [
       inputs
       | (input_filename | split("/")[-1]
-         | capture("^report-(?<dist>[^-]+)-(?<suite>.*)\\.json$")) as $report
+         | capture("^test-results-(?<dist>[^-]+)-(?<suite>.*)-attempt[0-9]+\\.json$")) as $report
       | ((.testsuites.testsuite // empty) | asarray)[]
       | select(.failures != "0" or .errors != "0")
       | ((.testcase // empty) | asarray)[]
@@ -225,6 +241,7 @@ for branch in $TARGET_BRANCHES; do
     | {
         branch: $branch,
         run_url: $run_url,
+        run_attempt: $run_attempt,
         head_sha: $head_sha,
         failures: (
           $tests

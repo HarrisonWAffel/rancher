@@ -124,14 +124,17 @@ jobs:
           sudo .github/scripts/ensure-nvme-data-disk.sh "${args[@]}" "$GITHUB_WORKSPACE/build"
       - name: testdata
         run: mkdir -p build/testdata
+      # Only fetch the images, into their own directory. On a re-run, downloading every artifact
+      # would pull the previous attempt's reports into /tmp, where they could be re-uploaded as this attempt's.
       - name: Download Docker images artifact
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          path: "/tmp"
+          pattern: "rancher-{server,agent}-linux-amd64"
+          path: "/tmp/images"
           merge-multiple: true
       - name: Load rancher/rancher-server image
         run: |
-          image_id=$(docker load --input /tmp/rancher-server-linux-amd64.tar 2>&1 | grep "Loaded image" | awk '{print $NF}')
+          image_id=$(docker load --input /tmp/images/rancher-server-linux-amd64.tar 2>&1 | grep "Loaded image" | awk '{print $NF}')
           if [ -z "$image_id" ]; then
             echo "Error: Failed to load image from tarball!"
             exit 1
@@ -142,7 +145,7 @@ jobs:
           echo "the image created is ${IMAGE}:${TAG}"
       - name: Load rancher/rancher-agent image
         run: |
-          image_agent_id=$(docker load --input /tmp/rancher-agent-linux-amd64.tar 2>&1 | grep "Loaded image" | awk '{print $NF}')
+          image_agent_id=$(docker load --input /tmp/images/rancher-agent-linux-amd64.tar 2>&1 | grep "Loaded image" | awk '{print $NF}')
           if [ -z "$image_agent_id" ]; then
             echo "Error: Failed to load image from tarball!"
             exit 1
@@ -163,12 +166,15 @@ jobs:
         run: |
           # Strip regex syntax: '?' is invalid in artifact names, and '[]?*' would act as globs in the upload path.
           export TESTSUITE="$(echo "${V2PROV_TEST_RUN_REGEX}" | sed -e 's/Test//' -e 's/[][()|_^.*$?]//g')"
-          echo "suite=${TESTSUITE}" >> $GITHUB_OUTPUT
+          # Artifacts and the files inside them are named <kind>-<dist>-<suite>-attempt<N>,
+          # so consumers can attribute them to an attempt from the name alone.
+          LEG="${V2PROV_TEST_DIST}-${TESTSUITE}-attempt${GITHUB_RUN_ATTEMPT}"
+          echo "leg=${LEG}" >> "$GITHUB_OUTPUT"
           # out.txt is the plaintext `go test -v` rendering, out.json is the raw
           # `go test -json` event stream, which is what the JUnit conversion parses.
           for ext in txt json; do
             if [ -f "./build/out.${ext}" ]; then
-              mv "./build/out.${ext}" "/tmp/report-${V2PROV_TEST_DIST}-${TESTSUITE}.${ext}"
+              mv "./build/out.${ext}" "/tmp/test-results-${LEG}.${ext}"
             else
               echo "warning: ./build/out.${ext} not found"
             fi
@@ -177,16 +183,27 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: "Test Results ${{ matrix.V2PROV_TEST_DIST }} ${{ steps.test_output.outputs.suite }}"
-          path: "/tmp/report-${{ matrix.V2PROV_TEST_DIST }}-${{ steps.test_output.outputs.suite }}.*"
+          name: "test-results-${{ steps.test_output.outputs.leg }}"
+          path: "/tmp/test-results-${{ steps.test_output.outputs.leg }}.*"
           if-no-files-found: warn
-      - name: Upload logdump artifact if we had some tests failures
-        if: failure()
+      # Cancelled attempts (timeouts, runner loss) are retried by the nightly, so bundle those too.
+      - name: Upload debug bundle
+        id: debug_bundle
+        if: (failure() || cancelled()) && hashFiles('provtest_output.txt') != ''
         uses: rancherlabs/cowboy@61de86d99456805424f9af0dadfcf362413cd745 # v0.0.2
         with:
           log-file-path: provtest_output.txt
+          output-file: "debug-bundle-${{ steps.test_output.outputs.leg }}"
+          artifact-name: "debug-bundle-${{ steps.test_output.outputs.leg }}"
           artifact-retention-days: 7
-          artifact-name: "Parsed Failure Log Dump (${{ matrix.V2PROV_TEST_DIST }}, ${{ steps.test_output.outputs.suite }})"
+          metadata: ${{ toJSON(matrix) }}
+      - name: Link debug bundle
+        if: steps.debug_bundle.outputs.artifact-url != ''
+        env:
+          ARTIFACT_NAME: ${{ steps.debug_bundle.outputs.artifact-name }}
+          ARTIFACT_URL: ${{ steps.debug_bundle.outputs.artifact-url }}
+        run: |
+          echo "Debug bundle: [${ARTIFACT_NAME}](${ARTIFACT_URL})" >> "$GITHUB_STEP_SUMMARY"
 
   # provisioning_tests_summary prints a friendly summary of what tests ran. It's true purpose
   # is to act as an anchor, giving us a single check that forwards the results of the dynamic matrix
@@ -226,23 +243,61 @@ jobs:
       - name: Fetch test output
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          # Only pull the artifacts we need to convert
-          pattern: "Test Results *"
-          merge-multiple: true
+          # Every attempt's results, one directory per artifact
+          pattern: "test-results-*"
           path: /tmp/test-results/
       - name: Convert test results to XML
+        env:
+          RUN_ATTEMPT: ${{ github.run_attempt }}
         run: |
           set -eo pipefail
-          # Parse the raw `go test -json` stream rather than the plaintext report.
-          for file in /tmp/test-results/report-*.json; do
-            [ -f "$file" ] || continue
-            go run github.com/jstemmer/go-junit-report/v2@14d61e6e75e3f3c74551d757ad936e8e88014464 -parser gojson < "$file" > "${file%.json}.xml"
+          mkdir -p /tmp/xml-results
+
+          # Each artifact was downloaded into its own directory, named test-results-<dist>-<suite>-attempt<N>.
+          # Legs that passed in an earlier attempt are not re-run, so results for a leg can come from
+          # any attempt, and only its newest attempt should be converted.
+          newer_attempt_exists() {
+            local leg="$1"
+            local attempt="$2"
+            local newer=$((attempt + 1))
+            while [ "$newer" -le "$RUN_ATTEMPT" ]; do
+              if [ -d "/tmp/test-results/${leg}-attempt${newer}" ]; then
+                return 0
+              fi
+              newer=$((newer + 1))
+            done
+            return 1
+          }
+
+          for dir in /tmp/test-results/test-results-*; do
+            if [ ! -d "$dir" ]; then
+              continue
+            fi
+
+            name="$(basename "$dir")"
+            leg="$(echo "$name" | sed -E 's/-attempt[0-9]+$//')"
+            attempt="$(echo "$name" | sed -E 's/^.*-attempt([0-9]+)$/\1/')"
+
+            if newer_attempt_exists "$leg" "$attempt"; then
+              echo "skipping ${name}, a newer attempt of this leg exists"
+              continue
+            fi
+
+            # Parse the raw `go test -json` stream rather than the plaintext report.
+            file="${dir}/${name}.json"
+            if [ ! -f "$file" ]; then
+              echo "warning: ${file} not found"
+              continue
+            fi
+
+            echo "converting ${name}"
+            go run github.com/jstemmer/go-junit-report/v2@14d61e6e75e3f3c74551d757ad936e8e88014464 -parser gojson < "$file" > "/tmp/xml-results/${name}.xml"
           done
       - name: Upload XML Test Results
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: XML Results
-          path: "/tmp/test-results/report-*.xml"
+          name: "xml-results-attempt${{ github.run_attempt }}"
+          path: "/tmp/xml-results/*.xml"
           if-no-files-found: warn
 
   event-file:

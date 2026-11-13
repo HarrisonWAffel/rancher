@@ -111,4 +111,5 @@ jobs:
           event-name: ${{ github.event_name }}
           create-comment: 'off'
           run-id: ${{ github.run_id }}
+          run-attempt: ${{ github.run_attempt }}
 
