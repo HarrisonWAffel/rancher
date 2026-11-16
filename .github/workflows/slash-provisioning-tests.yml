@@ -11,9 +11,9 @@ on:
 
 permissions: {}
 
-# Re-adding the label cancels the previous run. The label name keeps unrelated labels out of the group.
+# Re-adding the label cancels the previous run. Separate labels and senders cannot cancel it.
 concurrency:
-  group: slash-provisioning-tests-${{ github.event.pull_request.number }}-${{ github.event.label.name }}
+  group: slash-provisioning-tests-${{ github.event.pull_request.number }}-${{ github.event.label.name }}-${{ github.event.sender.id }}
   cancel-in-progress: true
 
 # Mirrors pull-request.yml
@@ -30,7 +30,8 @@ env:
 
 jobs:
   resolve-request:
-    if: github.event.label.name == 'ptest'
+    # Set PTEST_LABEL_ACTOR_LOGIN to the account that owns the PAT used to apply the label.
+    if: github.event.label.name == 'ptest' && github.event.sender.login == vars.PTEST_LABEL_ACTOR_LOGIN
     runs-on: ubuntu-latest
     permissions:
       issues: read
