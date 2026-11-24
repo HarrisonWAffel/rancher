@@ -70,7 +70,7 @@ explicit:
   - name: nightly
     meta:
       V2PROV_TEST_TIMEOUT: 200m
-      V2PROV_RUNNER_FAMILY: c6id
+      # V2PROV_RUNNER_FAMILY: c6id, restore once test races are resolved
       branches:
         - main
         - release/v2.15
